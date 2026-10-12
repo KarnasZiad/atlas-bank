@@ -1,0 +1,29 @@
+# Optional observability stack: traces (Tempo), metrics and dashboards (Grafana) in one container.
+#
+#   docker compose -f compose.yaml -f deploy/compose.observability.yaml up -d
+#   Grafana: http://localhost:3000
+#
+# Each request is traced from the gateway through the services and across Kafka (trace context
+# propagated in record headers); logs carry the same traceId, and error responses return it.
+x-otlp: &otlp
+  MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://lgtm:4318/v1/traces
+  MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "true"
+  MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://lgtm:4318/v1/metrics
+
+services:
+  lgtm:
+    image: grafana/otel-lgtm:0.36.0
+    ports:
+      - "3000:3000"
+    mem_limit: 1g
+
+  customer-service:
+    environment: *otlp
+  account-service:
+    environment: *otlp
+  transaction-service:
+    environment: *otlp
+  notification-service:
+    environment: *otlp
+  api-gateway:
+    environment: *otlp

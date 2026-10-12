@@ -1,0 +1,4 @@
+# Only the built jars are needed by the image build.
+**
+!services/*/target/*.jar
+!edge/*/target/*.jar

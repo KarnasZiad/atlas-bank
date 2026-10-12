@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: customer-service
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak-admin:
+            provider: keycloak
+            client-id: ${ATLAS_CUSTOMER_SERVICE_CLIENT_ID:customer-service}
+            client-secret: ${ATLAS_CUSTOMER_SERVICE_CLIENT_SECRET:}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${ATLAS_KEYCLOAK_URL:http://localhost:8180}/realms/${ATLAS_KEYCLOAK_REALM:atlas-bank}/protocol/openid-connect/token
+
+server:
+  port: ${SERVER_PORT:8081}
+
+atlas:
+  datasource:
+    database: ${ATLAS_DB_NAME:customer_db}
+  identity:
+    keycloak:
+      base-url: ${ATLAS_KEYCLOAK_URL:http://localhost:8180}
+      realm: ${ATLAS_KEYCLOAK_REALM:atlas-bank}
+  customers:
+    # Secrets: no default on purpose, startup fails until the environment provides them.
+    personal-data:
+      encryption-password: ${ATLAS_PII_ENCRYPTION_PASSWORD:}
+      encryption-salt: ${ATLAS_PII_ENCRYPTION_SALT:}
+      fingerprint-key: ${ATLAS_PII_FINGERPRINT_KEY:}

@@ -1,0 +1,19 @@
+# Build output
+target/
+*.class
+
+# Local secrets: never commit them (use .env.example as the template)
+.env
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,172 @@
+spring:
+  application:
+    name: api-gateway
+  threads:
+    virtual:
+      enabled: true
+  data:
+    redis:
+      host: ${ATLAS_REDIS_HOST:localhost}
+      port: ${ATLAS_REDIS_PORT:6379}
+      password: ${ATLAS_REDIS_PASSWORD:}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${ATLAS_OIDC_ISSUER_URI:http://localhost:8180/realms/atlas-bank}
+          jwk-set-uri: ${ATLAS_OIDC_JWK_SET_URI:${spring.security.oauth2.resourceserver.jwt.issuer-uri}/protocol/openid-connect/certs}
+          audiences: ${ATLAS_OIDC_AUDIENCE:atlas-api}
+          authorities-claim-name: roles
+          authority-prefix: ROLE_
+          principal-claim-name: preferred_username
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+          default-filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@callerKeyResolver}"
+                redis-rate-limiter.replenishRate: ${ATLAS_RATE_LIMIT_PER_SECOND:20}
+                redis-rate-limiter.burstCapacity: ${ATLAS_RATE_LIMIT_BURST:40}
+                redis-rate-limiter.requestedTokens: 1
+            - name: RequestSize
+              args:
+                maxSize: 1MB
+            - SecureHeaders
+            # Stateless API: cookies are never forwarded to the services.
+            - RemoveRequestHeader=Cookie
+            - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+          filter:
+            secure-headers:
+              content-security-policy: "default-src 'none'; frame-ancestors 'none'"
+          globalcors:
+            cors-configurations:
+              "[/api/**]":
+                allowed-origins: ${ATLAS_CORS_ALLOWED_ORIGINS:http://localhost:4200,http://localhost:5173}
+                allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+                allowed-headers: Authorization,Content-Type,Idempotency-Key
+                exposed-headers: Location,Idempotent-Replayed,Retry-After,X-RateLimit-Remaining
+                max-age: 3600
+          routes:
+            - id: customer-service
+              uri: ${ATLAS_CUSTOMER_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/customers/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: customer-service
+                    fallbackUri: forward:/fallback/unavailable
+            - id: account-service
+              uri: ${ATLAS_ACCOUNT_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/accounts/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: account-service
+                    fallbackUri: forward:/fallback/unavailable
+            - id: transaction-service
+              uri: ${ATLAS_TRANSACTION_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/v1/transactions/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: transaction-service
+                    fallbackUri: forward:/fallback/unavailable
+            - id: notification-service
+              uri: ${ATLAS_NOTIFICATION_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/v1/notifications/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: notification-service
+                    fallbackUri: forward:/fallback/unavailable
+            # OpenAPI descriptions of the services, aggregated by the API console below.
+            - id: customer-service-docs
+              uri: ${ATLAS_CUSTOMER_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/docs/customer-service
+              filters:
+                - SetPath=/v3/api-docs
+            - id: account-service-docs
+              uri: ${ATLAS_ACCOUNT_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/docs/account-service
+              filters:
+                - SetPath=/v3/api-docs
+            - id: transaction-service-docs
+              uri: ${ATLAS_TRANSACTION_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/docs/transaction-service
+              filters:
+                - SetPath=/v3/api-docs
+            - id: notification-service-docs
+              uri: ${ATLAS_NOTIFICATION_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/docs/notification-service
+              filters:
+                - SetPath=/v3/api-docs
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+# Circuit breakers open after repeated failures and fail fast instead of piling up requests.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 10s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: ${ATLAS_TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    metrics:
+      export:
+        enabled: false
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: Customers
+        url: /docs/customer-service
+      - name: Accounts
+        url: /docs/account-service
+      - name: Transactions
+        url: /docs/transaction-service
+      - name: Notifications
+        url: /docs/notification-service
+    oauth:
+      client-id: ${ATLAS_API_CONSOLE_CLIENT_ID:atlas-web}
+      use-pkce-with-authorization-code-grant: true
+      scopes: openid

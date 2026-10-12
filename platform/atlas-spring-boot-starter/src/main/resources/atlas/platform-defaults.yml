@@ -1,0 +1,132 @@
+# ---------------------------------------------------------------------------------------
+# Atlas Bank platform defaults, shared by every business service.
+#
+# Loaded with the LOWEST precedence by PlatformDefaultsEnvironmentPostProcessor: a service's
+# application.yml, environment variables and command-line arguments always win.
+# Secrets are never defaulted: they must come from the environment.
+# ---------------------------------------------------------------------------------------
+spring:
+  threads:
+    virtual:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 100
+        serialization-mode: via-dto
+
+  datasource:
+    url: jdbc:postgresql://${ATLAS_DB_HOST:localhost}:${ATLAS_DB_PORT:5432}/${atlas.datasource.database}
+    username: ${ATLAS_DB_USERNAME}
+    password: ${ATLAS_DB_PASSWORD}
+    hikari:
+      pool-name: ${spring.application.name}-db-pool
+      maximum-pool-size: ${ATLAS_DB_POOL_SIZE:10}
+      # Fail fast instead of queueing forever behind a row lock or a runaway query.
+      data-source-properties:
+        options: -c lock_timeout=${ATLAS_DB_LOCK_TIMEOUT:5s} -c statement_timeout=${ATLAS_DB_STATEMENT_TIMEOUT:30s}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+      org.hibernate.envers:
+        audit_table_suffix: _aud
+        store_data_at_delete: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Public issuer (the "iss" claim) and internal JWKS endpoint can differ behind a proxy.
+          issuer-uri: ${ATLAS_OIDC_ISSUER_URI:http://localhost:8180/realms/atlas-bank}
+          jwk-set-uri: ${ATLAS_OIDC_JWK_SET_URI:${spring.security.oauth2.resourceserver.jwt.issuer-uri}/protocol/openid-connect/certs}
+          audiences: ${ATLAS_OIDC_AUDIENCE:atlas-api}
+          # Keycloak maps realm roles to a top-level "roles" claim (see the realm definition).
+          authorities-claim-name: roles
+          authority-prefix: ROLE_
+          principal-claim-name: preferred_username
+
+  kafka:
+    bootstrap-servers: ${ATLAS_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    client-id: ${spring.application.name}
+    # Payloads are converted to JSON bytes by the RecordMessageConverter (both directions), so the
+    # Kafka (de)serializers only move bytes and no class name ever travels on the wire.
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    listener:
+      ack-mode: record
+      observation-enabled: true
+    template:
+      observation-enabled: true
+
+  modulith:
+    events:
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
+      jdbc:
+        schema-initialization:
+          enabled: false
+
+server:
+  shutdown: graceful
+  forward-headers-strategy: framework
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  info:
+    java:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: ${ATLAS_TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    metrics:
+      export:
+        # Metrics are scraped by Prometheus; OTLP is used for traces only.
+        enabled: false
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  default-produces-media-type: application/json
+  writer-with-order-by-keys: true
+
+atlas:
+  openapi:
+    server-url: ${ATLAS_PUBLIC_API_URL:http://localhost:8080}
+    authorization-url: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/protocol/openid-connect/auth
+    token-url: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/protocol/openid-connect/token

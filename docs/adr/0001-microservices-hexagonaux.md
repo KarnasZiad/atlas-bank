@@ -1,0 +1,31 @@
+# ADR-0001 — Microservices Spring Boot 4 à architecture hexagonale
+
+- Statut : acceptée
+- Date : 2026-10-12
+
+## Contexte
+
+Le système doit évoluer par domaines (clients, comptes, opérations, notifications) avec des équipes
+et des rythmes différents, tout en restant maintenable : peu de couplage, peu de duplication,
+règles métier testables.
+
+## Décision
+
+- Quatre services métier découpés par **propriété des données**, plus une gateway.
+- Java 21, **Spring Boot 4.0.8** et **Spring Cloud 2025.1.3** : couple aligné et supporté
+  (Spring Boot 3.5 n'est plus maintenu en open source depuis juin 2026).
+- Dans chaque service : couches `domain` / `application` / `infrastructure` / `web` ; le sens des
+  dépendances est **testé** par ArchUnit (`HexagonalArchitectureRules`), pas seulement documenté.
+- Hexagonal *pragmatique* : les entités du domaine portent les annotations JPA, ce qui évite un
+  double modèle et le code de conversion associé. Le domaine reste libre de toute dépendance à Spring.
+- Les repositories Spring Data implémentent directement les ports applicatifs (une interface qui
+  étend à la fois `JpaRepository` et le port) : aucun adaptateur écrit à la main.
+- Les préoccupations transverses vivent dans un **starter interne** (auto-configurations) plutôt que
+  d'être copiées dans chaque service.
+
+## Conséquences
+
+- Ajouter un service consiste surtout à écrire du métier : sécurité, erreurs, audit, Kafka,
+  OpenAPI et configuration sont hérités du starter.
+- Le starter devient un composant de plateforme versionné ; une évolution incompatible doit être
+  coordonnée entre les services.

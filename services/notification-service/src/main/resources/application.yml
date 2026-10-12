@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: notification-service
+  messages:
+    basename: messages/notifications
+    # The default bundle (English) applies to unknown languages, never the server locale.
+    fallback-to-system-locale: false
+  mail:
+    host: ${ATLAS_SMTP_HOST:localhost}
+    port: ${ATLAS_SMTP_PORT:1025}
+    properties:
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+      mail.smtp.auth: ${ATLAS_SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${ATLAS_SMTP_STARTTLS:false}
+
+server:
+  port: ${SERVER_PORT:8084}
+
+atlas:
+  datasource:
+    database: ${ATLAS_DB_NAME:notification_db}
+  notifications:
+    mail:
+      from: ${ATLAS_MAIL_FROM:no-reply@atlasbank.example}

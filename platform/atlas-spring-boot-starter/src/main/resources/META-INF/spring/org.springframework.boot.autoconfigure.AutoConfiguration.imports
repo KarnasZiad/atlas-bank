@@ -1,0 +1,8 @@
+ma.atlasbank.platform.autoconfigure.AtlasCoreAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasSecurityAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasWebMvcAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasJpaAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasEnversAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasKafkaAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasOpenApiAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasEventPublicationAutoConfiguration

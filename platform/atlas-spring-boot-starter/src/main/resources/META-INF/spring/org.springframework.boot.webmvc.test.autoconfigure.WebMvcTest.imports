@@ -1,0 +1,3 @@
+ma.atlasbank.platform.autoconfigure.AtlasCoreAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasSecurityAutoConfiguration
+ma.atlasbank.platform.autoconfigure.AtlasWebMvcAutoConfiguration

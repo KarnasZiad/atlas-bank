@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: account-service
+
+server:
+  port: ${SERVER_PORT:8082}
+
+atlas:
+  datasource:
+    database: ${ATLAS_DB_NAME:account_db}
+  accounts:
+    numbering:
+      country-code: ${ATLAS_BANK_COUNTRY:MA}
+      bank-code: ${ATLAS_BANK_CODE:999}
+      branch-code: ${ATLAS_BANK_BRANCH_CODE:00100}
+    statement-days-by-default: 30
+    # Product catalogue: limits per account type and currency, in units of that currency.
+    products:
+      CURRENT:
+        MAD: { overdraft-limit: 5000, daily-debit-limit: 50000 }
+        EUR: { overdraft-limit: 500, daily-debit-limit: 5000 }
+        USD: { overdraft-limit: 500, daily-debit-limit: 5000 }
+      SAVINGS:
+        MAD: { overdraft-limit: 0, daily-debit-limit: 20000 }
+        EUR: { overdraft-limit: 0, daily-debit-limit: 2000 }

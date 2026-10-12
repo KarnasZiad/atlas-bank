@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: transaction-service
+
+server:
+  port: ${SERVER_PORT:8083}
+
+atlas:
+  datasource:
+    database: ${ATLAS_DB_NAME:transaction_db}
+  transactions:
+    # Ceiling of a single order, per accepted currency (daily limits are enforced by the ledger).
+    max-amount-per-order:
+      MAD: 100000
+      EUR: 10000
+      USD: 10000

@@ -17,6 +17,10 @@ public interface IntegrationEvent {
     /** Business time at which the fact happened. */
     Instant occurredAt();
 
-    /** Kafka record key: events sharing a key are delivered in order. */
+    /**
+     * Kafka record key: events sharing a key land on the same partition and are consumed
+     * sequentially. The transactional outbox does not guarantee that events committed concurrently
+     * are sent in commit order, so consumers rely on versions and idempotency, never on arrival order.
+     */
     String partitionKey();
 }

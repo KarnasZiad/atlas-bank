@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import ma.atlasbank.contracts.Topics;
@@ -89,14 +90,15 @@ class CustomerOnboardingIT {
                 .await(Topics.CUSTOMER_SNAPSHOTS, CustomerSnapshot.class,
                         received -> received.stream().filter(s -> s.customerId().equals(customerId)).count() >= 2,
                         Duration.ofSeconds(30));
-        assertThat(snapshots)
-                .filteredOn(snapshot -> snapshot.customerId().equals(customerId))
-                .extracting(CustomerSnapshot::status)
-                .containsExactly(CustomerStatus.PENDING_VERIFICATION, CustomerStatus.ACTIVE);
-        assertThat(snapshots)
-                .filteredOn(snapshot -> snapshot.customerId().equals(customerId))
-                .extracting(CustomerSnapshot::version)
-                .isSorted();
+        // The outbox may send concurrently committed events in any order: consumers rely on versions.
+        List<CustomerSnapshot> published = snapshots.stream()
+                .filter(snapshot -> snapshot.customerId().equals(customerId))
+                .toList();
+        assertThat(published).extracting(CustomerSnapshot::status)
+                .containsExactlyInAnyOrder(CustomerStatus.PENDING_VERIFICATION, CustomerStatus.ACTIVE);
+        assertThat(published).extracting(CustomerSnapshot::version).doesNotHaveDuplicates();
+        assertThat(published.stream().max(Comparator.comparingLong(CustomerSnapshot::version)))
+                .get().extracting(CustomerSnapshot::status).isEqualTo(CustomerStatus.ACTIVE);
 
         String storedNationalId = jdbc.queryForObject(
                 "select national_id from customer where id = ?", String.class, customerId);

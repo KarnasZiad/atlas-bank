@@ -114,6 +114,11 @@ spring:
               filters:
                 - SetPath=/v3/api-docs
 
+atlas:
+  gateway:
+    # Reverse proxies in front of the gateway (rate limiting by real client address): 0 when exposed directly.
+    trusted-proxies: ${ATLAS_TRUSTED_PROXIES:0}
+
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful

@@ -222,7 +222,7 @@
     </build>
 
     <profiles>
-        <!-- mvn verify -Psecurity-scan : audit des dÃ©pendances (CVE) -->
+        <!-- mvn verify -Psecurity-scan : audit des dépendances (CVE) -->
         <profile>
             <id>security-scan</id>
             <build>

@@ -93,6 +93,9 @@ spring:
     listener:
       ack-mode: record
       observation-enabled: true
+      # One consumer per partition of the platform topics (atlas.kafka.partitions): records of one key
+      # stay ordered, different keys are processed in parallel.
+      concurrency: ${ATLAS_KAFKA_LISTENER_CONCURRENCY:3}
     template:
       observation-enabled: true
 

@@ -86,6 +86,19 @@ class PaymentOrderTest {
     }
 
     @Test
+    void anUnreviewedOrderExpiresAndCanNoLongerBeApproved() {
+        PaymentOrder order = staffDeposit();
+
+        order.expire(NOW);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.REJECTED);
+        assertThat(order.getRejectionCode()).isEqualTo("APPROVAL_EXPIRED");
+        assertThatThrownBy(() -> order.approve(new Reviewer("agent-2", "agent.youssef"), NOW))
+                .isInstanceOf(BusinessRuleViolationException.class);
+        assertThatThrownBy(() -> transfer().expire(NOW)).isInstanceOf(BusinessRuleViolationException.class);
+    }
+
+    @Test
     void ordersPlacedWithinTheLimitsNeedNoReview() {
         PaymentOrder order = transfer();
 

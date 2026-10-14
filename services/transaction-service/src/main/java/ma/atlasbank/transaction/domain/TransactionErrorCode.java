@@ -14,5 +14,7 @@ public enum TransactionErrorCode implements ErrorCode {
     ORDER_NOT_AWAITING_APPROVAL,
     SELF_APPROVAL_FORBIDDEN,
     /** Rejection code of a staff order refused by the reviewing employee. */
-    REFUSED_BY_REVIEWER
+    REFUSED_BY_REVIEWER,
+    /** Rejection code of a staff order nobody reviewed before the end of its business day. */
+    APPROVAL_EXPIRED
 }

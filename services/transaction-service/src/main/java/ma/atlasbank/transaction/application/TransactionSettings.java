@@ -6,11 +6,13 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Currency;
 import java.util.Map;
 import java.util.Optional;
 import ma.atlasbank.commons.money.Money;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -20,12 +22,14 @@ import org.springframework.validation.annotation.Validated;
  *                          map is not accepted at all
  * @param staffControls     four-eyes limits of the orders placed by bank staff, per currency; in a
  *                          currency absent from the map, every staff order needs a second employee
+ * @param pendingOrderAlertAfter how long an order may wait for its ledger outcome before it is reported
  */
 @Validated
 @ConfigurationProperties("atlas.transactions")
 public record TransactionSettings(
         @NotEmpty Map<Currency, @Positive BigDecimal> maxAmountPerOrder,
-        @NotNull Map<Currency, @Valid StaffControl> staffControls) {
+        @NotNull Map<Currency, @Valid StaffControl> staffControls,
+        @DefaultValue("15m") Duration pendingOrderAlertAfter) {
 
     public Optional<BigDecimal> ceilingFor(Currency currency) {
         return Optional.ofNullable(maxAmountPerOrder.get(currency));

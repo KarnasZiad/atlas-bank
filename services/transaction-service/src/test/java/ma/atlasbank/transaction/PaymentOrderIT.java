@@ -34,6 +34,7 @@ import ma.atlasbank.testsupport.containers.InfrastructureContainers;
 import ma.atlasbank.testsupport.kafka.TopicReader;
 import ma.atlasbank.testsupport.security.TestOrderSigning;
 import ma.atlasbank.testsupport.security.TestTokens;
+import ma.atlasbank.transaction.application.OrderMaintenance;
 import org.iban4j.CountryCode;
 import org.iban4j.Iban;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.TestPropertySource;
@@ -77,6 +79,12 @@ class PaymentOrderIT {
 
     @Autowired
     private JsonMapper jsonMapper;
+
+    @Autowired
+    private OrderMaintenance maintenance;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Test
     void acceptsATransferAndHandsItToTheLedgerThroughTheOutbox() throws Exception {
@@ -186,6 +194,33 @@ class PaymentOrderIT {
         mvc.perform(post(TRANSACTIONS + "/{id}/approval", orderId).with(TestTokens.employee("agent.careful")))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("ORDER_NOT_AWAITING_APPROVAL"));
+    }
+
+    @Test
+    void expiresStaffOrdersNotReviewedDuringTheirBusinessDay() throws Exception {
+        String yesterday = JsonPath.read(deposit(TestTokens.employee("agent.late"), "12000.00")
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String today = JsonPath.read(deposit(TestTokens.employee("agent.late"), "13000.00")
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        jdbc.update("update payment_order set requested_at = requested_at - interval '1 day' where id = ?::uuid", yesterday);
+
+        assertThat(maintenance.expireUnreviewedOrders()).isGreaterThanOrEqualTo(1);
+
+        mvc.perform(get(TRANSACTIONS + "/{id}", yesterday).with(TestTokens.employee()))
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionCode").value("APPROVAL_EXPIRED"));
+        mvc.perform(get(TRANSACTIONS + "/{id}", today).with(TestTokens.employee()))
+                .andExpect(jsonPath("$.status").value("AWAITING_APPROVAL"));
+    }
+
+    @Test
+    void reportsOrdersStillWaitingForTheLedger() throws Exception {
+        String stale = JsonPath.read(transfer(TestTokens.customer(UUID.randomUUID()), key(), "3.00")
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        long before = maintenance.countStuckOrders();
+        jdbc.update("update payment_order set requested_at = requested_at - interval '1 hour' where id = ?::uuid", stale);
+
+        assertThat(maintenance.countStuckOrders()).isEqualTo(before + 1);
     }
 
     @Test

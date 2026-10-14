@@ -146,6 +146,17 @@ public class PaymentOrder extends AuditableEntity {
         completedAt = at;
     }
 
+    /**
+     * An approval is only valid on the business day the order was placed: an order still unreviewed at
+     * the end of that day is rejected, never executed on a stale decision.
+     */
+    public void expire(Instant at) {
+        requireAwaitingApproval();
+        status = OrderStatus.REJECTED;
+        rejectionCode = TransactionErrorCode.APPROVAL_EXPIRED.code();
+        completedAt = at;
+    }
+
     /** Employee who approved the order, when a review was required and granted. */
     public Optional<Reviewer> approver() {
         boolean refused = TransactionErrorCode.REFUSED_BY_REVIEWER.code().equals(rejectionCode);

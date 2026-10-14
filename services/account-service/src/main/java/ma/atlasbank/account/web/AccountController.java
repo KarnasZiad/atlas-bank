@@ -95,15 +95,17 @@ class AccountController {
     @StaffOnly
     @PostMapping(path = "/{accountId}/freeze", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Freeze debits on an account")
-    AccountView freeze(@PathVariable UUID accountId, @Valid @RequestBody StatusChangeCommand command) {
-        return commands.freeze(accountId, command.reason());
+    AccountView freeze(@PathVariable UUID accountId, @Valid @RequestBody StatusChangeCommand command,
+                       Requester requester) {
+        return commands.freeze(accountId, command.reason(), requester);
     }
 
-    @StaffOnly
+    @AdminOnly
     @PostMapping("/{accountId}/unfreeze")
-    @Operation(summary = "Lift a manual freeze")
-    AccountView unfreeze(@PathVariable UUID accountId) {
-        return commands.unfreeze(accountId);
+    @Operation(summary = "Lift a manual freeze",
+            description = "Supervisor decision, by another person than the one who froze the account.")
+    AccountView unfreeze(@PathVariable UUID accountId, Requester requester) {
+        return commands.unfreeze(accountId, requester);
     }
 
     @StaffOnly

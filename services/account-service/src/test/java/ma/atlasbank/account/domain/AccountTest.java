@@ -9,6 +9,7 @@ import java.util.Currency;
 import java.util.UUID;
 import ma.atlasbank.commons.error.BusinessRuleViolationException;
 import ma.atlasbank.commons.error.DomainException;
+import ma.atlasbank.commons.error.OperationNotPermittedException;
 import ma.atlasbank.commons.money.Money;
 import org.junit.jupiter.api.Test;
 
@@ -70,6 +71,23 @@ class AccountTest {
                 AccountErrorCode.ACCOUNT_FROZEN);
         account.credit(mad("10"), reference(TransactionKind.DEPOSIT), null, NOW);
         assertThat(account.balance()).isEqualTo(mad("10"));
+    }
+
+    @Test
+    void aManualFreezeIsLiftedByAnotherPerson() {
+        StaffMember investigator = new StaffMember("sub-amina", "agent.amina");
+        Account account = account(BigDecimal.ZERO);
+        account.freeze(FreezeCause.MANUAL, "Investigation", investigator);
+
+        assertThatThrownBy(() -> account.unfreeze(new StaffMember("sub-amina", "agent.amina.renamed")))
+                .isInstanceOf(OperationNotPermittedException.class)
+                .extracting(error -> ((DomainException) error).errorCode())
+                .isEqualTo(AccountErrorCode.SELF_RELEASE_FORBIDDEN);
+        assertThat(account.getFrozenBy()).isEqualTo("agent.amina");
+
+        account.unfreeze(new StaffMember("sub-admin", "admin.atlas"));
+        assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(account.getFrozenBy()).isNull();
     }
 
     @Test

@@ -105,9 +105,20 @@ class AccountControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(reason))
                 .andExpect(status().isForbidden());
 
-        given(commands.freeze(eq(accountId), eq("Suspicious activity"))).willReturn(view(accountId));
+        given(commands.freeze(eq(accountId), eq("Suspicious activity"), any(Requester.class))).willReturn(view(accountId));
         mvc.perform(post(ACCOUNTS + "/{id}/freeze", accountId).with(TestTokens.employee())
                         .contentType(MediaType.APPLICATION_JSON).content(reason))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void onlyASupervisorLiftsAFreeze() throws Exception {
+        UUID accountId = UUID.randomUUID();
+        given(commands.unfreeze(eq(accountId), any(Requester.class))).willReturn(view(accountId));
+
+        mvc.perform(post(ACCOUNTS + "/{id}/unfreeze", accountId).with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(ACCOUNTS + "/{id}/unfreeze", accountId).with(TestTokens.admin()))
                 .andExpect(status().isOk());
     }
 

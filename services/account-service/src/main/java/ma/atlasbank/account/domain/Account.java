@@ -16,6 +16,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import ma.atlasbank.commons.error.BusinessRuleViolationException;
+import ma.atlasbank.commons.error.OperationNotPermittedException;
 import ma.atlasbank.commons.money.Money;
 import ma.atlasbank.platform.jpa.AuditableEntity;
 import org.hibernate.annotations.UuidGenerator;
@@ -79,6 +80,13 @@ public class Account extends AuditableEntity {
 
     @Column(name = "status_reason", length = 500)
     private String statusReason;
+
+    /** Employee who decided a manual freeze, while it lasts. */
+    @Column(name = "frozen_by", length = 100)
+    private String frozenBy;
+
+    @Column(name = "frozen_by_subject", length = 64)
+    private String frozenBySubject;
 
     @Column(name = "opened_at", nullable = false, updatable = false)
     private Instant openedAt;
@@ -190,6 +198,14 @@ public class Account extends AuditableEntity {
      * so that lifting the suspension later does not release it.
      */
     public void freeze(FreezeCause cause, String reason) {
+        freeze(cause, reason, null);
+    }
+
+    /**
+     * @param decidedBy employee who decided a manual freeze; {@code null} when the bank's own rules froze
+     *                  the account (customer suspension)
+     */
+    public void freeze(FreezeCause cause, String reason, StaffMember decidedBy) {
         requireCustomerAccount();
         if (status == AccountStatus.CLOSED) {
             throw closed();
@@ -200,14 +216,22 @@ public class Account extends AuditableEntity {
         status = AccountStatus.FROZEN;
         freezeCause = cause;
         statusReason = reason;
+        frozenBy = decidedBy == null ? null : decidedBy.username();
+        frozenBySubject = decidedBy == null ? null : decidedBy.subject();
     }
 
-    public void unfreeze() {
+    /**
+     * Lifting a freeze takes a second pair of eyes: the employee who froze the account cannot be the one
+     * who releases it.
+     */
+    public void unfreeze(StaffMember releasedBy) {
         requireCustomerAccount();
         requireStatus(AccountStatus.FROZEN);
-        status = AccountStatus.ACTIVE;
-        freezeCause = null;
-        statusReason = null;
+        if (frozenBySubject != null && frozenBySubject.equals(releasedBy.subject())) {
+            throw new OperationNotPermittedException(AccountErrorCode.SELF_RELEASE_FORBIDDEN,
+                    "A freeze must be lifted by a different employee than the one who decided it");
+        }
+        lift();
     }
 
     /**
@@ -217,8 +241,16 @@ public class Account extends AuditableEntity {
         if (status != AccountStatus.FROZEN || freezeCause != FreezeCause.CUSTOMER_SUSPENDED) {
             return false;
         }
-        unfreeze();
+        lift();
         return true;
+    }
+
+    private void lift() {
+        status = AccountStatus.ACTIVE;
+        freezeCause = null;
+        statusReason = null;
+        frozenBy = null;
+        frozenBySubject = null;
     }
 
     public void close(String reason, Instant closedAt) {

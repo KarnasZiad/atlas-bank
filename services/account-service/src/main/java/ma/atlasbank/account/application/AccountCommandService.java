@@ -15,6 +15,8 @@ import ma.atlasbank.account.domain.AccountHolder;
 import ma.atlasbank.account.domain.AccountLimits;
 import ma.atlasbank.account.domain.AccountStatus;
 import ma.atlasbank.account.domain.FreezeCause;
+import ma.atlasbank.account.domain.StaffMember;
+import ma.atlasbank.commons.security.Requester;
 import ma.atlasbank.commons.error.BusinessRuleViolationException;
 import ma.atlasbank.commons.money.Money;
 import ma.atlasbank.platform.time.BusinessCalendar;
@@ -61,22 +63,27 @@ public class AccountCommandService {
         return mapper.toView(account);
     }
 
-    public AccountView freeze(UUID accountId, String reason) {
-        return changeStatus(accountId, account -> account.freeze(FreezeCause.MANUAL, reason));
+    public AccountView freeze(UUID accountId, String reason, Requester requester) {
+        return changeStatus(accountId, account -> account.freeze(FreezeCause.MANUAL, reason, staffMember(requester)));
     }
 
     /**
      * Lifting a freeze is refused while the customer is suspended: the accounts of a suspended
-     * customer stay frozen until the customer is reinstated.
+     * customer stay frozen until the customer is reinstated. It is also refused to the employee who
+     * decided the freeze (four eyes).
      */
-    public AccountView unfreeze(UUID accountId) {
+    public AccountView unfreeze(UUID accountId, Requester requester) {
         return changeStatus(accountId, account -> {
             if (holders.findById(account.getCustomerId()).map(AccountHolder::isBlocked).orElse(false)) {
                 throw new BusinessRuleViolationException(AccountErrorCode.CUSTOMER_NOT_ELIGIBLE,
                         "The holder of account %s is suspended", account.getAccountNumber());
             }
-            account.unfreeze();
+            account.unfreeze(staffMember(requester));
         });
+    }
+
+    private static StaffMember staffMember(Requester requester) {
+        return new StaffMember(requester.subject(), requester.username());
     }
 
     public AccountView close(UUID accountId, String reason) {

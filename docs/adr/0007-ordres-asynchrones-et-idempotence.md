@@ -43,5 +43,6 @@ créditer un complice par des versements fictifs.
 
 - Retenter est toujours sûr, y compris après un repli 503 de la gateway ou en parallèle.
 - Les clients doivent gérer l'état asynchrone (interrogation ou notification).
-- Les ordres en attente d'approbation n'expirent pas encore : une échéance (refus automatique en fin de
-  journée) reste à ajouter.
+- Une approbation ne vaut que le jour ouvré de l'ordre : un ordre non relu à la fin de sa journée est
+  rejeté (`APPROVAL_EXPIRED`) par la maintenance périodique, qui signale aussi les ordres restés
+  `PENDING` trop longtemps (jauge `atlas.orders.stuck`, 15 min par défaut).

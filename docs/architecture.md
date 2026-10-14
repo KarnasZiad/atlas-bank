@@ -59,7 +59,8 @@ suffixe `.v1` d'un topic fait partie du contrat : une évolution incompatible pa
 
 | Topic | Producteur | Consommateurs | Clé | Contenu |
 |---|---|---|---|---|
-| `atlas.customer.snapshots.v1` (compacté) | customer-service | account-service, notification-service | id client | État courant du client, versionné ; les consommateurs ignorent une version plus ancienne que celle qu'ils détiennent (l'ordre d'arrivée n'est pas garanti) |
+| `atlas.customer.snapshots.v1` (compacté) | customer-service | account-service, notification-service | id client | État courant du client, versionné ; les consommateurs ignorent une version plus ancienne que celle qu'ils détiennent (l'ordre d'arrivée n'est pas garanti). Un client clôturé est publié sans données personnelles |
+| `atlas.customer.contact-changed.v1` | customer-service | notification-service | id client | Téléphone et/ou adresse modifiés (sans les nouvelles valeurs), par le client ou par la banque : alerte de sécurité par e-mail |
 | `atlas.payment.transaction-requested.v1` | transaction-service | account-service | compte débité (ou crédité pour un versement) | Ordre à imputer, initiateur et approbation (4 yeux) compris, **signé** en Ed25519 (ADR-0008) |
 | `atlas.ledger.transaction-outcomes.v1` | account-service | transaction-service, notification-service | id de l'ordre | `POSTED` ou `REJECTED` + motif, parties concernées |
 | `atlas.account.opened.v1` | account-service | notification-service | IBAN | Ouverture de compte |

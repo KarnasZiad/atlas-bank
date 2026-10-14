@@ -31,9 +31,9 @@ par les tests, configuration externalisée et observabilité de bout en bout.
 
 | Domaine | Ce qui est couvert |
 |---|---|
-| **Clients** | Enrôlement par un agent ; validation KYC par un **autre** agent (principe des 4 yeux) ; suspension, réactivation, clôture ; mise à jour des coordonnées ; historique d'audit complet (qui, quoi, quand) ; création automatique du compte de connexion Keycloak à l'activation, désactivation à la suspension |
+| **Clients** | Enrôlement par un agent ; validation KYC par un **autre** agent (principe des 4 yeux) ; suspension, réactivation (par un superviseur, autre que l'auteur de la suspension), clôture ; mise à jour des coordonnées, avec **alerte e-mail** au client ; historique d'audit complet (qui, quoi, quand) ; création automatique du compte de connexion Keycloak à l'activation, désactivation à la suspension ; coordonnées effacées des autres services à la clôture |
 | **Comptes** | Comptes courant et épargne, IBAN générés (format marocain, clé ISO 13616) ; catalogue produits par type **et** devise (découvert, plafond journalier) ; gel / dégel / clôture ; relevé paginé ; gel automatique des comptes d'un client suspendu, levé à sa réactivation ; grand livre en **partie double** (la caisse de l'agence est la contrepartie des opérations espèces) et réconciliation périodique |
-| **Opérations** | Virement (client ou agent), versement et retrait espèces (agent uniquement) ; en-tête `Idempotency-Key` obligatoire ; plafond par opération ; plafond journalier de débit par compte ; **4 yeux pour le personnel** au-delà d'un seuil par opération et d'un cumul journalier par agent ; ordres signés par transaction-service ; suivi d'état `AWAITING_APPROVAL → PENDING → COMPLETED / REJECTED` avec motif |
+| **Opérations** | Virement (client ou agent), versement et retrait espèces (agent uniquement) ; en-tête `Idempotency-Key` obligatoire ; plafond par opération ; plafond journalier de débit par compte ; **4 yeux pour le personnel** au-delà d'un seuil par opération et d'un cumul journalier par agent, approbation valable le jour même ; ordres signés par transaction-service ; suivi d'état `AWAITING_APPROVAL → PENDING → COMPLETED / REJECTED` avec motif |
 | **Notifications** | E-mails transactionnels en **français, anglais, arabe** selon la langue du client ; montants formatés selon la langue ; numéros de compte masqués ; consultation paginée |
 
 ## Architecture
@@ -190,20 +190,22 @@ Conventions communes :
 | Compte de service trop puissant | Permissions fines Keycloak (FGAP v2) : customer-service ne gère que les membres du groupe `/customers`, jamais le personnel, les groupes ou les rôles |
 | Vol d'identifiants du personnel | Second facteur (OTP) obligatoire pour tout utilisateur `EMPLOYEE` ou `ADMIN` dans le flux navigateur |
 | Accès aux données d'autrui (IDOR) | Contrôle de propriété dans la couche application via le claim `customer_id` ; une ressource d'autrui répond **404** (indiscernable d'une ressource inexistante) |
-| Fraude interne | Validation KYC en 4 yeux (le validateur doit différer du créateur, imposé par le domaine **et** par une contrainte SQL) ; **4 yeux sur les opérations du personnel** au-delà d'un seuil et d'un cumul journalier (approbateur ≠ initiateur, imposé par le domaine, la base et le grand livre) ; partie double et réconciliation : un versement fictif ne peut pas passer inaperçu ; audit Envers de chaque modification avec son auteur |
+| Prise de contrôle d'un compte client | Tout changement de téléphone ou d'adresse déclenche un e-mail d'alerte à l'adresse inchangée, qu'il vienne du client ou d'un agent |
+| Fraude interne | Validation KYC en 4 yeux (le validateur doit différer du créateur, comparé sur l'identifiant immuable `sub`, imposé par le domaine **et** par une contrainte SQL) ; levée d'une suspension ou d'un gel réservée à un superviseur autre que son auteur ; **4 yeux sur les opérations du personnel** au-delà d'un seuil et d'un cumul journalier (approbateur ≠ initiateur, imposé par le domaine, la base et le grand livre) ; partie double et réconciliation : un versement fictif ne peut pas passer inaperçu ; audit Envers de chaque modification avec son auteur |
 | Débit d'un compte d'autrui | Le grand livre revérifie la propriété du compte débité, sans faire confiance au service amont ; un IBAN inexistant renvoie le même refus, pour ne pas révéler son existence |
 | Faux ordre de paiement | Ordres signés en Ed25519 par transaction-service, vérifiés par le grand livre : un ordre non signé ou altéré n'est jamais imputé (DLT, aucun reçu) ; Kafka authentifié (SASL) avec ACL par service : seul transaction-service peut écrire les ordres |
 | Altération de l'historique | Journal et reçus d'imputation en ajout seul (triggers, `TRUNCATE` compris) ; le service se connecte avec un rôle sans droit de modification sur ces tables ni sur le schéma ; les migrations utilisent le rôle propriétaire |
-| Fuite de données personnelles | CIN chiffré en AES-256-GCM (Spring Security Crypto), doublons détectés par HMAC-SHA256 (*blind index*), CIN toujours masqué dans l'API, IBAN masqués dans les e-mails, coordonnées non publiées sur Kafka au-delà du nécessaire |
+| Fuite de données personnelles | CIN chiffré en AES-256-GCM (Spring Security Crypto), doublons détectés par HMAC-SHA256 (*blind index*), CIN toujours masqué dans l'API, IBAN masqués dans les e-mails, coordonnées non publiées sur Kafka au-delà du nécessaire ; à la clôture, plus aucune donnée personnelle dans les snapshots (compaction sous 7 jours) ni dans la projection de notification-service |
 | Divulgation d'une enquête (*tipping-off*) | Les motifs de gel ou de suspension saisis par la banque ne sont jamais montrés au client : ni dans l'API, ni dans les e-mails |
 | Rejeu, double paiement | `Idempotency-Key` obligatoire, empreinte SHA-256 de la requête pour détecter la réutilisation d'une clé avec un contenu différent ; requêtes concurrentes d'un même initiateur sérialisées (rejeu, jamais d'erreur 500) |
-| Force brute, abus | Détection de force brute Keycloak, politique de mot de passe forte, rate limiting par utilisateur ou IP à la gateway, taille des requêtes limitée |
+| Force brute, abus | Détection de force brute Keycloak, politique de mot de passe forte, rate limiting par utilisateur ou par IP réelle du client (proxys de confiance : `ATLAS_TRUSTED_PROXIES`) à la gateway, taille des requêtes limitée |
 | Attaques navigateur | En-têtes de sécurité (CSP `default-src 'none'`, `X-Frame-Options`, `nosniff`, `Referrer-Policy`), CORS restreint et configurable, aucun cookie transmis aux services |
 | Désérialisation hostile | Aucun nom de classe ne circule sur Kafka : les payloads JSON sont liés au type attendu par le consommateur |
 | Secrets | Aucun secret dans le code ni dans la configuration versionnée ; le démarrage échoue si une clé manque ; `.env` généré avec des valeurs aléatoires (`scripts/init-env.sh`) et ignoré par Git |
 | Fuite d'informations techniques | Ni stack trace, ni message interne, ni SQL dans les réponses d'erreur ; métriques et informations de build absentes de la surface publique de la gateway |
 | Exécution des conteneurs | Images minimales, utilisateur non-root, système de fichiers en lecture seule, aucune capacité Linux, `no-new-privileges` ; services non exposés hors de la gateway, ports locaux liés à `127.0.0.1` |
-| Dépendances vulnérables | Profil Maven `security-scan` (OWASP dependency-check, échec si CVSS ≥ 7), exécuté chaque semaine en CI |
+| Dépendances vulnérables | Profil Maven `security-scan` (OWASP dependency-check, échec si CVSS ≥ 7), exécuté chaque semaine en CI ; Dependabot (Maven, actions, images) ; images scannées par Trivy (échec sur vulnérabilité critique corrigeable) ; CodeQL sur le code et les workflows |
+| Chaîne de build | Actions GitHub épinglées par commit, image de base épinglée par digest |
 
 ## Cohérence des transactions
 
@@ -237,6 +239,9 @@ solde égale la somme de ses écritures et que chaque transaction est équilibr�
 ./mvnw verify    # + tests d'intégration sur PostgreSQL, Kafka et Redis réels (Testcontainers, Docker requis)
 ```
 
+En CI (GitHub Actions), chaque pull request lance aussi la pile complète (`docker compose`), scanne les
+images et joue `scripts/smoke-test.ps1` de bout en bout ; CodeQL analyse le code et les workflows.
+
 | Niveau | Exemples |
 |---|---|
 | Domaine | machine à états client, règle des 4 yeux, débit, crédit, découvert, plafond journalier, gel, clôture, `Money` |
@@ -261,6 +266,8 @@ plus faible : chaque service, puis chaque déploiement, peut les surcharger.
 | `ATLAS_KEYCLOAK_URL`, `ATLAS_CUSTOMER_SERVICE_CLIENT_SECRET` | Provisionnement des comptes de connexion |
 | `ATLAS_PII_ENCRYPTION_PASSWORD`, `ATLAS_PII_ENCRYPTION_SALT`, `ATLAS_PII_FINGERPRINT_KEY` | Protection des données personnelles |
 | `ATLAS_REDIS_*`, `ATLAS_RATE_LIMIT_PER_SECOND`, `ATLAS_RATE_LIMIT_BURST`, `ATLAS_CORS_ALLOWED_ORIGINS` | Gateway |
+| `ATLAS_TRUSTED_PROXIES` | Nombre de proxys inverses devant la gateway (adresse réelle du client lue dans `X-Forwarded-For`), 0 par défaut |
+| `ATLAS_KAFKA_LISTENER_CONCURRENCY` | Consommateurs par listener (3 par défaut, une par partition) |
 | `ATLAS_SMTP_*`, `ATLAS_MAIL_FROM` | Envoi des e-mails |
 
 Règles métier configurables (sans recompilation) : âge minimum et langues
@@ -309,7 +316,8 @@ ma.atlasbank.<service>
 | Santé, sondes Kubernetes | `/actuator/health/liveness`, `/actuator/health/readiness` |
 | Métriques | `/actuator/prometheus` des services sur le réseau interne (tag `application` sur chaque métrique), OTLP pour la gateway |
 | Cohérence des livres | Jauge `atlas.ledger.discrepancies` (alerte au-dessus de 0), journal `LEDGER INCONSISTENCY`, `GET /api/v1/accounts/reconciliation` (`ADMIN`) |
-| Ordres à approuver | `GET /api/v1/transactions?status=AWAITING_APPROVAL` (personnel) |
+| Ordres à approuver | `GET /api/v1/transactions?status=AWAITING_APPROVAL` (personnel) ; les ordres non relus expirent en fin de journée (`APPROVAL_EXPIRED`) |
+| Ordres sans résultat | Jauge `atlas.orders.stuck` et journal `WARN` : ordres `PENDING` depuis plus de 15 min (grand livre arrêté ou message en DLT) |
 | Sécurité | Journal `SECURITY` : ordre de paiement sans signature valide, parqué sur `atlas.payment.transaction-requested.v1.dlt` |
 | Traces | OTLP vers Tempo (surcouche d'observabilité) ; propagées via HTTP **et** Kafka |
 | Logs | JSON structurés (ECS) en conteneur, avec `traceId` / `spanId` |
@@ -327,8 +335,7 @@ Ce dépôt est une base de production réaliste, pas un système homologué. Pou
   un coffre (Vault, KMS) avec rotation, terminaison TLS à l'ingress, signature des autres événements
   si le réseau n'est pas de confiance, authentification renforcée (step-up) du client pour les
   virements et le changement de coordonnées.
-- **Contrôles** : expiration des ordres en attente d'approbation, approvisionnement de la caisse depuis
-  la réserve centrale, 4 yeux sur la levée d'un gel et la réactivation d'un client.
+- **Contrôles** : approvisionnement de la caisse depuis la réserve centrale.
 - **Fonctionnel** : virements externes (compensation interbancaire), change de devises, intérêts
   d'épargne, frais, relevés PDF, ordres permanents, plafonds par client.
 - **Interface** : application web ou mobile cliente (le client OAuth2 `atlas-web` est prêt, en PKCE).

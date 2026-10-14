@@ -40,6 +40,10 @@ sur un Keycloak réel. Compromettre ce service revenait à prendre le contrôle 
 - **Second facteur obligatoire pour le personnel** : le flux navigateur `atlas browser` exige un code
   à usage unique (OTP) de tout utilisateur ayant le rôle `EMPLOYEE` (donc aussi `ADMIN`), configuré à
   la première connexion. Les clients gardent le second facteur conditionnel standard.
+- **Séparation des tâches sur les sanctions** : un agent peut suspendre un client ou geler un compte,
+  mais seul un `ADMIN` peut lever la sanction, et jamais celui qui l'a décidée.
+- **Les règles des 4 yeux comparent le `sub`** (identifiant immuable émis par Keycloak), jamais le
+  login, qu'un administrateur peut renommer : validation KYC, levée de sanction, ordres du personnel.
 
 ## Conséquences
 

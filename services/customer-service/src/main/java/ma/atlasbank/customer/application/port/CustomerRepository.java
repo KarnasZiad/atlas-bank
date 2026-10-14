@@ -20,6 +20,12 @@ public interface CustomerRepository {
 
     Optional<Customer> findById(UUID id);
 
+    /**
+     * Loads the customer with an exclusive row lock held until the end of the transaction:
+     * concurrent changes of the same customer wait (and then fail on their version check).
+     */
+    Optional<Customer> lockById(UUID id);
+
     boolean existsByEmail(String email);
 
     boolean existsByNationalIdFingerprint(String fingerprint);

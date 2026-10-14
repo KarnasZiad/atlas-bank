@@ -23,6 +23,11 @@ class CustomerFinder {
         return customers.findById(id).orElseThrow(() -> notFound(id));
     }
 
+    /** Loads the customer with an exclusive row lock held until the end of the transaction. */
+    Customer lockById(UUID id) {
+        return customers.lockById(id).orElseThrow(() -> notFound(id));
+    }
+
     Customer getVisibleTo(UUID id, Requester requester) {
         if (!requester.canAccessCustomer(id)) {
             throw notFound(id);

@@ -60,10 +60,13 @@ public class CustomerNotifier {
                 recipient.getFullName(), mask(event.accountNumber()), LocalizedLabel.of(event.accountType()), event.currency()));
     }
 
+    /**
+     * The reason typed by the employee is an internal note (it may mention an ongoing investigation):
+     * the customer is told the new status only, never why it was decided.
+     */
     public void onAccountStatusChanged(AccountStatusChanged event) {
         notify(event.customerId(), NotificationType.ACCOUNT_STATUS_CHANGED, event.eventId(), recipient -> List.of(
-                recipient.getFullName(), mask(event.accountNumber()), LocalizedLabel.of(event.status()),
-                event.reason() == null ? "-" : event.reason()));
+                recipient.getFullName(), mask(event.accountNumber()), LocalizedLabel.of(event.status())));
     }
 
     public void onTransactionOutcome(TransactionOutcome outcome) {

@@ -7,6 +7,7 @@ import ma.atlasbank.account.application.view.LedgerEntryView;
 import ma.atlasbank.account.domain.Account;
 import ma.atlasbank.account.domain.LedgerEntry;
 import ma.atlasbank.commons.money.Money;
+import ma.atlasbank.commons.security.Requester;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -18,6 +19,20 @@ public interface AccountViewMapper {
     @Mapping(target = "overdraftLimit", expression = "java(account.overdraft().amount())")
     @Mapping(target = "dailyDebitLimit", expression = "java(account.dailyDebitAllowance().amount())")
     AccountView toView(Account account);
+
+    /**
+     * A freeze reason may refer to an investigation: the customer sees that the account is frozen,
+     * never why.
+     */
+    default AccountView toViewFor(Account account, Requester requester) {
+        AccountView view = toView(account);
+        if (requester.isStaff()) {
+            return view;
+        }
+        return new AccountView(view.id(), view.accountNumber(), view.customerId(), view.type(), view.currency(),
+                view.balance(), view.availableBalance(), view.overdraftLimit(), view.dailyDebitLimit(), view.status(),
+                null, view.openedAt(), view.closedAt());
+    }
 
     @Mapping(target = "amount", expression = "java(entry.money().amount())")
     @Mapping(target = "balanceAfter", expression = "java(scaled(entry.getBalanceAfter(), entry.getCurrency()))")

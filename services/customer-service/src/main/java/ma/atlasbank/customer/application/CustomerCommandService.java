@@ -91,7 +91,8 @@ public class CustomerCommandService {
     public CustomerView updateContact(UUID customerId, UpdateContactCommand command, Requester requester) {
         Customer customer = finder.getVisibleTo(customerId, requester);
         customer.updateContact(phoneNumbers.toE164(command.phoneNumber()), command.address().toAddress());
-        return saveAndPublish(customer);
+        saveAndPublish(customer);
+        return mapper.toViewFor(customer, requester);
     }
 
     private CustomerView saveAndPublish(Customer customer) {

@@ -4,6 +4,10 @@ import java.time.Instant;
 import java.util.UUID;
 import ma.atlasbank.contracts.IntegrationEvent;
 
+/**
+ * @param reason internal note written by the bank (it may refer to an investigation): consumers must
+ *               never show it to the customer
+ */
 public record AccountStatusChanged(
         UUID eventId,
         Instant occurredAt,

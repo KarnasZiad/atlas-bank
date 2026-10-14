@@ -8,6 +8,8 @@ import ma.atlasbank.account.domain.AccountType;
 
 /**
  * Amounts are expressed with the number of decimals of the account currency.
+ *
+ * @param statusReason internal note of the bank about a freeze or a closure, shown to staff only
  */
 public record AccountView(
         UUID id,

@@ -29,9 +29,19 @@ class MessageSourceNotificationRendererTest {
     @Test
     void translatesLabelsAndKeepsApostrophes() {
         RenderedMessage french = renderer.render(NotificationType.ACCOUNT_STATUS_CHANGED, Locale.FRENCH,
-                List.of("Salma", "**** 0001", LocalizedLabel.of(AccountStatus.FROZEN), "Contrôle"));
+                List.of("Salma", "**** 0001", LocalizedLabel.of(AccountStatus.FROZEN)));
 
         assertThat(french.body()).contains("gelé (débits bloqués)").contains("n'êtes pas à l'origine");
+    }
+
+    @Test
+    void neverTellsTheCustomerWhyTheAccountStatusChanged() {
+        for (Locale language : List.of(Locale.ENGLISH, Locale.FRENCH, Locale.forLanguageTag("ar"))) {
+            RenderedMessage message = renderer.render(NotificationType.ACCOUNT_STATUS_CHANGED, language,
+                    List.of("Salma", "**** 0001", LocalizedLabel.of(AccountStatus.FROZEN), "Suspected money laundering"));
+
+            assertThat(message.body()).doesNotContain("{3}").doesNotContain("laundering");
+        }
     }
 
     @Test

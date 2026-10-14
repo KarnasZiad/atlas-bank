@@ -30,7 +30,7 @@ public class AccountQueryService {
     private final BusinessCalendar calendar;
 
     public AccountView get(UUID accountId, Requester requester) {
-        return mapper.toView(finder.getVisibleTo(accountId, requester));
+        return mapper.toViewFor(finder.getVisibleTo(accountId, requester), requester);
     }
 
     /**
@@ -38,7 +38,7 @@ public class AccountQueryService {
      */
     public Page<AccountView> search(AccountSearchCriteria criteria, Requester requester, Pageable pageable) {
         AccountSearchCriteria effective = requester.isStaff() ? criteria : criteria.ownedBy(requester.requireCustomerId());
-        return accounts.search(effective, pageable).map(mapper::toView);
+        return accounts.search(effective, pageable).map(account -> mapper.toViewFor(account, requester));
     }
 
     /**

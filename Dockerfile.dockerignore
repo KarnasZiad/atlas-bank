@@ -1,0 +1,3 @@
+# The build context of an image is its module directory: only the jar it runs is needed.
+**
+!target/*.jar

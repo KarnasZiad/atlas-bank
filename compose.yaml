@@ -205,9 +205,8 @@ services:
     <<: *service-defaults
     image: atlas-bank/customer-service:local
     build:
-      context: .
-      args:
-        MODULE: services/customer-service
+      context: services/customer-service
+      dockerfile: ../../Dockerfile
     environment:
       <<: *service-environment
       ATLAS_DB_USERNAME: customer_svc
@@ -232,9 +231,8 @@ services:
     <<: *service-defaults
     image: atlas-bank/account-service:local
     build:
-      context: .
-      args:
-        MODULE: services/account-service
+      context: services/account-service
+      dockerfile: ../../Dockerfile
     environment:
       <<: *service-environment
       ATLAS_DB_USERNAME: account_svc
@@ -257,9 +255,8 @@ services:
     <<: *service-defaults
     image: atlas-bank/transaction-service:local
     build:
-      context: .
-      args:
-        MODULE: services/transaction-service
+      context: services/transaction-service
+      dockerfile: ../../Dockerfile
     environment:
       <<: *service-environment
       ATLAS_DB_USERNAME: transaction_svc
@@ -281,9 +278,8 @@ services:
     <<: *service-defaults
     image: atlas-bank/notification-service:local
     build:
-      context: .
-      args:
-        MODULE: services/notification-service
+      context: services/notification-service
+      dockerfile: ../../Dockerfile
     depends_on:
       <<: *platform-ready
       mailpit:
@@ -309,9 +305,8 @@ services:
   api-gateway:
     image: atlas-bank/api-gateway:local
     build:
-      context: .
-      args:
-        MODULE: edge/api-gateway
+      context: edge/api-gateway
+      dockerfile: ../../Dockerfile
     restart: unless-stopped
     mem_limit: 384m
     read_only: true

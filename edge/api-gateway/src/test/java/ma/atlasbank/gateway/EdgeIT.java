@@ -85,6 +85,13 @@ class EdgeIT {
                 .expectStatus().isOk();
     }
 
+    @Test
+    void keepsMetricsAndBuildInformationOffThePublicSurface() {
+        client.get().uri("/actuator/prometheus").exchange().expectStatus().isUnauthorized();
+        client.mutateWith(caller()).get().uri("/actuator/prometheus").exchange().expectStatus().isForbidden();
+        client.get().uri("/actuator/info").exchange().expectStatus().isUnauthorized();
+    }
+
     private static JwtMutator caller() {
         return mockJwt().jwt(jwt -> jwt.subject("user-" + UUID.randomUUID()));
     }

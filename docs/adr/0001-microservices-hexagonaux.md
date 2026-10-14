@@ -29,3 +29,8 @@ règles métier testables.
   OpenAPI et configuration sont hérités du starter.
 - Le starter devient un composant de plateforme versionné ; une évolution incompatible doit être
   coordonnée entre les services.
+- Nuance assumée : les agrégats héritent d'`AuditableEntity` (starter), qui porte des annotations
+  Spring Data d'audit. Le domaine n'importe aucune classe Spring, et la règle ArchUnit le vérifie, mais il
+  dépend de Spring Data à la compilation par cet héritage. Le prix est accepté, en échange de colonnes
+  d'audit et d'un verrou optimiste uniformes ; un domaine entièrement portable demanderait un modèle de
+  persistance séparé.

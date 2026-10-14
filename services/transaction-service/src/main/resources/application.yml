@@ -14,3 +14,13 @@ atlas:
       MAD: 100000
       EUR: 10000
       USD: 10000
+    # Four-eyes control of staff orders: above these limits, a second employee must approve.
+    staff-controls:
+      MAD: { approval-threshold: 10000, daily-limit-without-approval: 50000 }
+      EUR: { approval-threshold: 1000, daily-limit-without-approval: 5000 }
+      USD: { approval-threshold: 1000, daily-limit-without-approval: 5000 }
+    # Orders are signed so that the ledger only posts what this service accepted.
+    # Secrets: no default on purpose, startup fails until the environment provides them.
+    signing:
+      key-id: ${ATLAS_ORDER_SIGNING_KEY_ID:}
+      private-key: ${ATLAS_ORDER_SIGNING_PRIVATE_KEY:}

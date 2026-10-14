@@ -9,6 +9,7 @@ import java.util.Currency;
 import java.util.UUID;
 import ma.atlasbank.commons.error.BusinessRuleViolationException;
 import ma.atlasbank.commons.error.DomainException;
+import ma.atlasbank.commons.error.OperationNotPermittedException;
 import ma.atlasbank.commons.money.Money;
 import org.junit.jupiter.api.Test;
 
@@ -73,6 +74,23 @@ class AccountTest {
     }
 
     @Test
+    void aManualFreezeIsLiftedByAnotherPerson() {
+        StaffMember investigator = new StaffMember("sub-amina", "agent.amina");
+        Account account = account(BigDecimal.ZERO);
+        account.freeze(FreezeCause.MANUAL, "Investigation", investigator);
+
+        assertThatThrownBy(() -> account.unfreeze(new StaffMember("sub-amina", "agent.amina.renamed")))
+                .isInstanceOf(OperationNotPermittedException.class)
+                .extracting(error -> ((DomainException) error).errorCode())
+                .isEqualTo(AccountErrorCode.SELF_RELEASE_FORBIDDEN);
+        assertThat(account.getFrozenBy()).isEqualTo("agent.amina");
+
+        account.unfreeze(new StaffMember("sub-admin", "admin.atlas"));
+        assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(account.getFrozenBy()).isNull();
+    }
+
+    @Test
     void liftingASuspensionNeverReleasesAManualFreeze() {
         Account manuallyFrozen = account(BigDecimal.ZERO);
         manuallyFrozen.freeze(FreezeCause.MANUAL, "Investigation");
@@ -101,6 +119,31 @@ class AccountTest {
         assertThat(account.getStatus()).isEqualTo(AccountStatus.CLOSED);
         assertRejected(() -> account.credit(mad("1"), reference(TransactionKind.DEPOSIT), null, NOW),
                 AccountErrorCode.ACCOUNT_CLOSED);
+    }
+
+    @Test
+    void theTillHoldsTheCashTakenInAndPaysOutNoMore() {
+        Account till = Account.openTellerCash("CASH-00100-MAD", MAD, NOW);
+
+        LedgerEntry cashIn = till.debit(mad("300"), reference(TransactionKind.DEPOSIT), NOTHING_TODAY, "MA64", NOW);
+        till.credit(mad("100"), reference(TransactionKind.WITHDRAWAL), "MA64", NOW);
+
+        assertThat(cashIn.getDirection()).isEqualTo(EntryDirection.DEBIT);
+        assertThat(cashIn.getBalanceAfter()).isEqualByComparingTo("300");
+        assertThat(till.balance()).isEqualTo(mad("200"));
+        assertRejected(() -> till.credit(mad("200.01"), reference(TransactionKind.WITHDRAWAL), "MA64", NOW),
+                AccountErrorCode.INSUFFICIENT_CASH);
+        assertThat(till.balance()).isEqualTo(mad("200"));
+    }
+
+    @Test
+    void theTillIsNeitherOwnedByACustomerNorOperatedLikeOne() {
+        Account till = Account.openTellerCash("CASH-00100-MAD", MAD, NOW);
+
+        assertThat(till.isInternal()).isTrue();
+        assertThat(till.isOwnedBy(null)).isFalse();
+        assertRejected(() -> till.freeze(FreezeCause.MANUAL, "test"), AccountErrorCode.INTERNAL_ACCOUNT);
+        assertRejected(() -> till.close("test", NOW), AccountErrorCode.INTERNAL_ACCOUNT);
     }
 
     @Test

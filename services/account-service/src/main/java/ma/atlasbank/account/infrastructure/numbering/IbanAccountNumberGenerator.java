@@ -1,5 +1,6 @@
 package ma.atlasbank.account.infrastructure.numbering;
 
+import java.util.Currency;
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -55,5 +56,11 @@ class IbanAccountNumberGenerator implements AccountNumberGenerator {
                 .accountNumber(accountNumberFormat.formatted(sequence))
                 .build()
                 .toString();
+    }
+
+    /** For instance {@code CASH-00100-MAD}: the till of the branch in that currency. */
+    @Override
+    public String tellerCashAccountNumber(Currency currency) {
+        return "CASH-" + properties.branchCode() + "-" + currency.getCurrencyCode();
     }
 }

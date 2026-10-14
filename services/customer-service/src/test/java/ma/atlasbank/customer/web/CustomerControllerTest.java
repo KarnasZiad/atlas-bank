@@ -131,6 +131,17 @@ class CustomerControllerTest {
     }
 
     @Test
+    void onlyASupervisorLiftsASuspension() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        given(commands.reinstate(eq(customerId), any(Requester.class))).willReturn(view(customerId));
+
+        mvc.perform(post(CUSTOMERS + "/{id}/reinstatement", customerId).with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(CUSTOMERS + "/{id}/reinstatement", customerId).with(TestTokens.admin()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void administratorsInheritEmployeePermissions() throws Exception {
         UUID customerId = UUID.randomUUID();
         given(commands.verify(eq(customerId), any(Requester.class))).willReturn(view(customerId));

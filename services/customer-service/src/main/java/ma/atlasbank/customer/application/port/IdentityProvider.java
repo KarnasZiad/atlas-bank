@@ -1,6 +1,7 @@
 package ma.atlasbank.customer.application.port;
 
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -16,6 +17,11 @@ public interface IdentityProvider {
      * @return identifier of the account at the identity provider
      */
     String provisionCustomerAccount(CustomerAccount account);
+
+    /**
+     * @return the identifier of the sign-in account bound to this customer, if one exists
+     */
+    Optional<String> findCustomerAccount(CustomerAccount account);
 
     void enableAccount(String accountId);
 

@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,8 +16,10 @@ import com.jayway.jsonpath.JsonPath;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import ma.atlasbank.contracts.Topics;
+import ma.atlasbank.contracts.customer.ContactDetailsChanged;
 import ma.atlasbank.contracts.customer.CustomerSnapshot;
 import ma.atlasbank.contracts.customer.CustomerStatus;
 import ma.atlasbank.customer.application.port.IdentityProvider;
@@ -132,6 +135,50 @@ class CustomerOnboardingIT {
         mvc.perform(get(CUSTOMERS + "/{id}", customerId).with(TestTokens.customer(UUID.randomUUID())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CUSTOMER_NOT_FOUND"));
+    }
+
+    @Test
+    void warnsAboutContactChangesAndForgetsTheContactDetailsOfClosedCustomers() throws Exception {
+        given(identityProvider.provisionCustomerAccount(any())).willReturn("keycloak-user-mover");
+        UUID customerId = register("mover@example.ma", "GH445566");
+        mvc.perform(post(CUSTOMERS + "/{id}/verification", customerId).with(TestTokens.employee("agent.youssef")))
+                .andExpect(status().isOk());
+        // The customer can only sign in, hence change anything, once the sign-in account exists.
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                mvc.perform(get(CUSTOMERS + "/{id}", customerId).with(TestTokens.employee()))
+                        .andExpect(jsonPath("$.identityProvisioned").value(true)));
+
+        mvc.perform(put(CUSTOMERS + "/{id}/contact", customerId).with(TestTokens.customer(customerId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"phoneNumber": "0698765432",
+                                 "address": {"line": "12 avenue Mohammed V", "city": "Rabat", "postalCode": "10000", "country": "MA"}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.registeredBy").doesNotExist());
+
+        List<ContactDetailsChanged> warnings = new TopicReader(consumerFactory, jsonMapper).await(
+                Topics.CUSTOMER_CONTACT_CHANGED, ContactDetailsChanged.class,
+                received -> received.stream().anyMatch(change -> change.customerId().equals(customerId)),
+                Duration.ofSeconds(30));
+        assertThat(warnings).filteredOn(change -> change.customerId().equals(customerId)).singleElement()
+                .satisfies(change -> {
+                    assertThat(change.changes()).containsExactly(ContactDetailsChanged.ContactField.PHONE_NUMBER);
+                    assertThat(change.changedByCustomer()).isTrue();
+                });
+
+        mvc.perform(post(CUSTOMERS + "/{id}/closure", customerId).with(TestTokens.admin())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\": \"Customer request\"}"))
+                .andExpect(status().isOk());
+
+        List<CustomerSnapshot> snapshots = new TopicReader(consumerFactory, jsonMapper).await(
+                Topics.CUSTOMER_SNAPSHOTS, CustomerSnapshot.class,
+                received -> received.stream().anyMatch(s -> s.customerId().equals(customerId) && s.status() == CustomerStatus.CLOSED),
+                Duration.ofSeconds(30));
+        assertThat(snapshots).filteredOn(s -> s.customerId().equals(customerId) && s.status() == CustomerStatus.CLOSED)
+                .singleElement()
+                .satisfies(closed -> assertThat(List.of(Optional.ofNullable(closed.firstName()), Optional.ofNullable(closed.lastName()),
+                        Optional.ofNullable(closed.email()), Optional.ofNullable(closed.phoneNumber()))).allMatch(Optional::isEmpty));
     }
 
     private UUID register(String email, String nationalId) throws Exception {

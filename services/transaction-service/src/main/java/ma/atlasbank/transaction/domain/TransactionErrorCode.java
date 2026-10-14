@@ -10,5 +10,11 @@ public enum TransactionErrorCode implements ErrorCode {
     UNSUPPORTED_CURRENCY,
     AMOUNT_ABOVE_LIMIT,
     INVALID_AMOUNT,
-    INVALID_PERIOD
+    INVALID_PERIOD,
+    ORDER_NOT_AWAITING_APPROVAL,
+    SELF_APPROVAL_FORBIDDEN,
+    /** Rejection code of a staff order refused by the reviewing employee. */
+    REFUSED_BY_REVIEWER,
+    /** Rejection code of a staff order nobody reviewed before the end of its business day. */
+    APPROVAL_EXPIRED
 }

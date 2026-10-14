@@ -14,6 +14,7 @@ import ma.atlasbank.platform.web.Locations;
 import ma.atlasbank.transaction.application.OrderSearchCriteria;
 import ma.atlasbank.transaction.application.PaymentOrderIntakeService;
 import ma.atlasbank.transaction.application.PaymentOrderQueryService;
+import ma.atlasbank.transaction.application.PaymentOrderReviewService;
 import ma.atlasbank.transaction.application.command.CashOperationCommand;
 import ma.atlasbank.transaction.application.command.TransferCommand;
 import ma.atlasbank.transaction.application.view.OrderSubmission;
@@ -37,7 +38,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Payment orders are asynchronous: intake answers {@code 202 Accepted} with the order to poll,
  * the ledger settles it a few milliseconds later. Every order requires an {@code Idempotency-Key}
- * header, so that a client can safely retry after a timeout without paying twice.
+ * header, so that a client can safely retry after a timeout without paying twice. Staff orders above
+ * the four-eyes limits are accepted as {@code AWAITING_APPROVAL} until another employee reviews them.
  */
 @Validated
 @RestController
@@ -52,6 +54,7 @@ class TransactionController {
     private static final String ORDER_PATH = "/api/v1/transactions/{orderId}";
 
     private final PaymentOrderIntakeService intake;
+    private final PaymentOrderReviewService reviews;
     private final PaymentOrderQueryService queries;
 
     @CustomerOrStaff
@@ -83,6 +86,21 @@ class TransactionController {
             @Valid @RequestBody CashOperationCommand command,
             Requester requester) {
         return accepted(intake.submitWithdrawal(command, idempotencyKey, requester));
+    }
+
+    @StaffOnly
+    @PostMapping("/{orderId}/approval")
+    @Operation(summary = "Approve a staff order",
+            description = "Four-eyes principle: the approver must differ from the employee who placed the order.")
+    PaymentOrderView approve(@PathVariable UUID orderId, Requester requester) {
+        return reviews.approve(orderId, requester);
+    }
+
+    @StaffOnly
+    @PostMapping("/{orderId}/refusal")
+    @Operation(summary = "Refuse a staff order awaiting approval", description = "Nothing reaches the ledger.")
+    PaymentOrderView refuse(@PathVariable UUID orderId, Requester requester) {
+        return reviews.refuse(orderId, requester);
     }
 
     @CustomerOrStaff

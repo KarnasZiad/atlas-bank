@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import ma.atlasbank.commons.money.Money;
 import ma.atlasbank.contracts.account.AccountOpened;
 import ma.atlasbank.contracts.account.AccountStatusChanged;
+import ma.atlasbank.contracts.customer.ContactDetailsChanged;
 import ma.atlasbank.contracts.ledger.TransactionOutcome;
 import ma.atlasbank.contracts.ledger.TransactionOutcome.Party;
 import ma.atlasbank.contracts.ledger.TransactionOutcome.PostingResult;
@@ -60,10 +61,23 @@ public class CustomerNotifier {
                 recipient.getFullName(), mask(event.accountNumber()), LocalizedLabel.of(event.accountType()), event.currency()));
     }
 
+    /**
+     * The reason typed by the employee is an internal note (it may mention an ongoing investigation):
+     * the customer is told the new status only, never why it was decided.
+     */
     public void onAccountStatusChanged(AccountStatusChanged event) {
         notify(event.customerId(), NotificationType.ACCOUNT_STATUS_CHANGED, event.eventId(), recipient -> List.of(
-                recipient.getFullName(), mask(event.accountNumber()), LocalizedLabel.of(event.status()),
-                event.reason() == null ? "-" : event.reason()));
+                recipient.getFullName(), mask(event.accountNumber()), LocalizedLabel.of(event.status())));
+    }
+
+    /**
+     * Security warning on the e-mail address, which did not change: whoever changed the phone number
+     * or the address, the customer hears about it.
+     */
+    public void onContactDetailsChanged(ContactDetailsChanged event) {
+        notify(event.customerId(), NotificationType.CONTACT_DETAILS_CHANGED, event.eventId(), recipient -> List.of(
+                recipient.getFullName(), LocalizedLabel.contactChanges(event.changes()),
+                LocalizedLabel.changedBy(event.changedByCustomer())));
     }
 
     public void onTransactionOutcome(TransactionOutcome outcome) {
@@ -105,6 +119,10 @@ public class CustomerNotifier {
         }
         Recipient recipient = recipients.findById(customerId)
                 .orElseThrow(() -> new RecipientNotYetKnownException(customerId));
+        if (recipient.isErased()) {
+            log.debug("{} not sent: the relationship with customer {} is closed", type, customerId);
+            return;
+        }
         RenderedMessage message = renderer.render(type, recipient.getLanguage(), arguments.of(recipient));
         sender.send(recipient.getEmail(), message);
         notifications.save(Notification.sent(customerId, type, Channel.EMAIL, sourceEventId, recipient.getEmail(),

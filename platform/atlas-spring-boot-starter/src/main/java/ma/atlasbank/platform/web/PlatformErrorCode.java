@@ -14,5 +14,6 @@ public enum PlatformErrorCode implements ErrorCode {
     CONCURRENT_MODIFICATION,
     DUPLICATE_RESOURCE,
     ACCESS_DENIED,
+    INVALID_TOKEN,
     INTERNAL_ERROR
 }

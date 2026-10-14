@@ -93,6 +93,18 @@ function Get-KeycloakAdminToken([string] $Password) {
 
 function New-IdempotencyKey { return [guid]::NewGuid().ToString() }
 
+# A payment order may be answered 503 by the gateway while a service warms up, even though it was
+# accepted: retrying with the same Idempotency-Key is safe by design (never a second order).
+function Submit-Order([string] $Uri, [string] $Token, $Body, [string] $Key) {
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        $response = Invoke-Api POST $Uri $Token $Body @{ 'Idempotency-Key' = $Key }
+        if ($response.Status -ne 503) { return $response }
+        Write-Host "    (503, retrying with the same Idempotency-Key)"
+        Start-Sleep -Seconds 5
+    }
+    return $response
+}
+
 # --- scenario -----------------------------------------------------------------------------------
 $secrets = Read-DotEnv $EnvFile
 $suffix = Get-Random -Minimum 100000 -Maximum 999999
@@ -150,9 +162,9 @@ $savings = (Invoke-Api POST "$Gateway/api/v1/accounts" $amina @{ customerId = $c
 Write-Host "    current $($current.accountNumber) / savings $($savings.accountNumber)"
 
 Step 'Cash deposit at the counter (asynchronous order, settled by the ledger)'
-$deposit = Invoke-Api POST "$Gateway/api/v1/transactions/deposits" $amina @{
+$deposit = Submit-Order "$Gateway/api/v1/transactions/deposits" $amina @{
     accountNumber = $current.accountNumber; amount = 1000.00; currency = 'MAD'; description = 'Cash deposit'
-} @{ 'Idempotency-Key' = (New-IdempotencyKey) }
+} (New-IdempotencyKey)
 Expect $deposit 202 "Deposit accepted ($($deposit.Body.reference))"
 Wait-Until { (Invoke-Api GET "$Gateway/api/v1/transactions/$($deposit.Body.id)" $amina).Body.status -eq 'COMPLETED' } 'Deposit posted' | Out-Null
 
@@ -160,9 +172,9 @@ Step 'Customer transfer with an idempotency key'
 $key = New-IdempotencyKey
 $transferBody = @{ sourceAccountNumber = $current.accountNumber; targetAccountNumber = $savings.accountNumber
                    amount = 250.00; currency = 'MAD'; description = 'Monthly savings' }
-$transfer = Invoke-Api POST "$Gateway/api/v1/transactions/transfers" $customer $transferBody @{ 'Idempotency-Key' = $key }
+$transfer = Submit-Order "$Gateway/api/v1/transactions/transfers" $customer $transferBody $key
 Expect $transfer 202 "Transfer accepted ($($transfer.Body.reference))"
-$retry = Invoke-Api POST "$Gateway/api/v1/transactions/transfers" $customer $transferBody @{ 'Idempotency-Key' = $key }
+$retry = Submit-Order "$Gateway/api/v1/transactions/transfers" $customer $transferBody $key
 if ($retry.Body.id -ne $transfer.Body.id -or "$($retry.Headers['Idempotent-Replayed'])" -ne 'true') { Fail 'Retry was not replayed' }
 Ok 'Retry with the same key replayed the original order (no double debit)'
 Wait-Until { (Invoke-Api GET "$Gateway/api/v1/transactions/$($transfer.Body.id)" $customer).Body.status -eq 'COMPLETED' } 'Transfer posted' | Out-Null
@@ -176,12 +188,30 @@ Ok "Current account 750.00 MAD, savings account 250.00 MAD"
 $statement = Invoke-Api GET "$Gateway/api/v1/accounts/$($current.id)/entries" $customer
 Ok "Statement: $($statement.Body.page.totalElements) entries"
 
+Step 'Four-eyes control on a large staff order'
+$large = Submit-Order "$Gateway/api/v1/transactions/deposits" $amina @{
+    accountNumber = $current.accountNumber; amount = 20000.00; currency = 'MAD'; description = 'Large cash deposit'
+} (New-IdempotencyKey)
+if ($large.Body.status -ne 'AWAITING_APPROVAL') { Fail "Large deposit should await approval, got $($large.Body.status)" }
+Ok 'Deposit above the threshold held for approval'
+Expect (Invoke-Api POST "$Gateway/api/v1/transactions/$($large.Body.id)/approval" $amina) 403 'The teller cannot approve her own order'
+Expect (Invoke-Api POST "$Gateway/api/v1/transactions/$($large.Body.id)/approval" $youssef) 200 'Approved by another employee'
+Wait-Until { (Invoke-Api GET "$Gateway/api/v1/transactions/$($large.Body.id)" $amina).Body.status -eq 'COMPLETED' } 'Approved deposit posted' | Out-Null
+
+Step 'Security warning when contact details change'
+Expect (Invoke-Api PUT "$Gateway/api/v1/customers/$customerId/contact" $customer @{
+    phoneNumber = '0698765432'; address = @{ line = '12 avenue Mohammed V'; city = 'Rabat'; postalCode = '10000'; country = 'MA' }
+}) 200 'Customer changed her phone number'
+Wait-Until {
+    (Invoke-Api GET "$Gateway/api/v1/notifications" $customer).Body.content | Where-Object type -eq 'CONTACT_DETAILS_CHANGED'
+} 'Warning e-mail sent to the unchanged address' | Out-Null
+
 Step 'Access control on money'
 Expect (Invoke-Api POST "$Gateway/api/v1/transactions/deposits" $customer @{
     accountNumber = $current.accountNumber; amount = 1; currency = 'MAD' } @{ 'Idempotency-Key' = (New-IdempotencyKey) }) 403 'Customers cannot record cash deposits'
-$overdraft = Invoke-Api POST "$Gateway/api/v1/transactions/transfers" $customer @{
+$overdraft = Submit-Order "$Gateway/api/v1/transactions/transfers" $customer @{
     sourceAccountNumber = $savings.accountNumber; targetAccountNumber = $current.accountNumber; amount = 999.00; currency = 'MAD'
-} @{ 'Idempotency-Key' = (New-IdempotencyKey) }
+} (New-IdempotencyKey)
 Wait-Until {
     $order = (Invoke-Api GET "$Gateway/api/v1/transactions/$($overdraft.Body.id)" $customer).Body
     $order.status -eq 'REJECTED' -and $order.rejectionCode -eq 'INSUFFICIENT_FUNDS'
@@ -191,5 +221,14 @@ Step 'Notifications'
 Wait-Until { (Invoke-Api GET "$Gateway/api/v1/notifications" $customer).Body.page.totalElements -ge 4 } 'Customer notifications recorded' | Out-Null
 $mails = Invoke-RestMethod -Uri "$Mailpit/api/v1/search?query=$([uri]::EscapeDataString("to:$customerEmail"))"
 Ok "$($mails.messages_count) e-mails delivered to $customerEmail (see $Mailpit)"
+
+Step 'Books (double entry)'
+$admin = Get-UserToken 'admin.atlas' $secrets['ATLAS_DEMO_ADMIN_PASSWORD']
+Expect (Invoke-Api GET "$Gateway/api/v1/accounts/reconciliation" $amina) 403 'Reconciliation restricted to administrators'
+$books = Invoke-Api GET "$Gateway/api/v1/accounts/reconciliation" $admin
+if (@($books.Body.accountsNotMatchingTheirEntries).Count -ne 0 -or @($books.Body.unbalancedTransactions).Count -ne 0) {
+    Fail "Ledger inconsistency: $($books.Body | ConvertTo-Json -Compress)"
+}
+Ok 'Every balance matches its entries and every transaction is balanced'
 
 Write-Host "`nAll checks passed." -ForegroundColor Green

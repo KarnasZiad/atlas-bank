@@ -15,9 +15,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 import ma.atlasbank.contracts.IntegrationEvent;
 import ma.atlasbank.contracts.Topics;
+import ma.atlasbank.contracts.customer.ContactDetailsChanged;
+import ma.atlasbank.contracts.customer.ContactDetailsChanged.ContactField;
 import ma.atlasbank.contracts.customer.CustomerSnapshot;
 import ma.atlasbank.contracts.customer.CustomerStatus;
 import ma.atlasbank.contracts.ledger.TransactionOutcome;
@@ -34,6 +37,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -58,6 +62,9 @@ class NotificationIT {
 
     @Autowired
     private MockMvc mvc;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @MockitoBean
     private MessageSender sender;
@@ -129,6 +136,38 @@ class NotificationIT {
                         .andExpect(jsonPath("$.content.length()").value(1))
                         .andExpect(jsonPath("$.content[0].type").value("TRANSFER_SENT"))
                         .andExpect(jsonPath("$.content[0].customerId").value(payer.toString())));
+    }
+
+    @Test
+    void warnsTheCustomerWhenContactDetailsChange() {
+        UUID customer = UUID.randomUUID();
+        publish(Topics.CUSTOMER_SNAPSHOTS, snapshot(customer, "watch@example.ma", "fr"));
+        publish(Topics.CUSTOMER_CONTACT_CHANGED, new ContactDetailsChanged(UUID.randomUUID(), Instant.now(), customer,
+                Set.of(ContactField.PHONE_NUMBER, ContactField.POSTAL_ADDRESS), true));
+
+        ArgumentCaptor<RenderedMessage> warning = ArgumentCaptor.forClass(RenderedMessage.class);
+        verify(sender, timeout(DELIVERY.toMillis())).send(eq("watch@example.ma"), warning.capture());
+        assertThat(warning.getValue().subject()).isEqualTo("Modification de vos coordonnées");
+        assertThat(warning.getValue().body())
+                .contains("numéro de téléphone et adresse postale")
+                .contains("depuis votre espace en ligne")
+                .doesNotContain("+212");
+    }
+
+    @Test
+    void erasesTheContactDetailsOfClosedCustomersAndWritesToThemNoMore() {
+        UUID customer = UUID.randomUUID();
+        publish(Topics.CUSTOMER_SNAPSHOTS, snapshot(customer, "leaving@example.ma", "fr"));
+        publish(Topics.CUSTOMER_SNAPSHOTS, new CustomerSnapshot(UUID.randomUUID(), Instant.now(), customer, 2,
+                null, null, null, null, null, CustomerStatus.CLOSED));
+
+        await().atMost(DELIVERY).untilAsserted(() -> assertThat(jdbc.queryForMap(
+                "select email, full_name, erased_at from recipient where customer_id = ?", customer))
+                .containsEntry("email", null).containsEntry("full_name", null)
+                .extractingByKey("erased_at").isNotNull());
+
+        publish(Topics.TRANSACTION_OUTCOMES, postedTransfer(customer, UUID.randomUUID()));
+        verify(sender, after(3_000).never()).send(eq("leaving@example.ma"), any());
     }
 
     private void publish(String topic, IntegrationEvent event) {

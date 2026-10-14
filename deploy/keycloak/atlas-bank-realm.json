@@ -53,7 +53,13 @@
       },
       {
         "name": "ADMIN",
-        "description": "Administrator (implies EMPLOYEE in the services)"
+        "description": "Administrator (implies EMPLOYEE in the services)",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "EMPLOYEE"
+          ]
+        }
       }
     ]
   },
@@ -63,21 +69,24 @@
       "path": "/customers",
       "realmRoles": [
         "CUSTOMER"
-      ]
+      ],
+      "id": "0c1f6a3e-2b7d-4e59-8a41-6d2f3b9c7e10"
     },
     {
       "name": "employees",
       "path": "/employees",
       "realmRoles": [
         "EMPLOYEE"
-      ]
+      ],
+      "id": "4a8e2d71-9c3b-4f06-b5e2-1d7a9c3e5f20"
     },
     {
       "name": "administrators",
       "path": "/administrators",
       "realmRoles": [
         "ADMIN"
-      ]
+      ],
+      "id": "7e3b9f15-6a2c-4d84-9e17-3c5b8a2d4f30"
     }
   ],
   "clients": [
@@ -216,6 +225,286 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "admin-permissions",
+      "surrogateAuthRequired": false,
+      "enabled": true,
+      "alwaysDisplayInConsole": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "notBefore": 0,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": true,
+      "publicClient": false,
+      "frontchannelLogout": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "realm_client": "false"
+      },
+      "authenticationFlowBindingOverrides": {},
+      "fullScopeAllowed": false,
+      "nodeReRegistrationTimeout": 0,
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "basic",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "organization",
+        "offline_access",
+        "microprofile-jwt"
+      ],
+      "authorizationSettings": {
+        "allowRemoteResourceManagement": true,
+        "policyEnforcementMode": "ENFORCING",
+        "resources": [
+          {
+            "name": "Roles",
+            "type": "Roles",
+            "ownerManagedAccess": false,
+            "attributes": {},
+            "uris": [],
+            "scopes": [
+              {
+                "name": "map-role-composite"
+              },
+              {
+                "name": "map-role-client-scope"
+              },
+              {
+                "name": "map-role"
+              }
+            ]
+          },
+          {
+            "name": "Organizations",
+            "type": "Organizations",
+            "ownerManagedAccess": false,
+            "attributes": {},
+            "uris": [],
+            "scopes": [
+              {
+                "name": "view"
+              },
+              {
+                "name": "manage"
+              }
+            ]
+          },
+          {
+            "name": "Clients",
+            "type": "Clients",
+            "ownerManagedAccess": false,
+            "attributes": {},
+            "uris": [],
+            "scopes": [
+              {
+                "name": "view"
+              },
+              {
+                "name": "map-roles-client-scope"
+              },
+              {
+                "name": "map-roles"
+              },
+              {
+                "name": "manage"
+              },
+              {
+                "name": "map-roles-composite"
+              }
+            ]
+          },
+          {
+            "name": "Users",
+            "type": "Users",
+            "ownerManagedAccess": false,
+            "attributes": {},
+            "uris": [],
+            "scopes": [
+              {
+                "name": "delegate"
+              },
+              {
+                "name": "view"
+              },
+              {
+                "name": "manage-group-membership"
+              },
+              {
+                "name": "impersonate"
+              },
+              {
+                "name": "map-roles"
+              },
+              {
+                "name": "reset-password"
+              },
+              {
+                "name": "manage"
+              }
+            ]
+          },
+          {
+            "name": "Groups",
+            "type": "Groups",
+            "ownerManagedAccess": false,
+            "attributes": {},
+            "uris": [],
+            "scopes": [
+              {
+                "name": "manage-members"
+              },
+              {
+                "name": "view"
+              },
+              {
+                "name": "manage-membership-of-members"
+              },
+              {
+                "name": "manage-membership"
+              },
+              {
+                "name": "delegate-members"
+              },
+              {
+                "name": "view-members"
+              },
+              {
+                "name": "manage"
+              },
+              {
+                "name": "impersonate-members"
+              }
+            ]
+          },
+          {
+            "name": "0c1f6a3e-2b7d-4e59-8a41-6d2f3b9c7e10",
+            "ownerManagedAccess": false,
+            "attributes": {},
+            "uris": [],
+            "scopes": [
+              {
+                "name": "manage-members"
+              },
+              {
+                "name": "view"
+              },
+              {
+                "name": "manage-membership-of-members"
+              },
+              {
+                "name": "manage-membership"
+              },
+              {
+                "name": "delegate-members"
+              },
+              {
+                "name": "view-members"
+              },
+              {
+                "name": "manage"
+              },
+              {
+                "name": "impersonate-members"
+              }
+            ]
+          }
+        ],
+        "policies": [
+          {
+            "name": "customer-service account",
+            "description": "Service account of the customer service (identity provisioning)",
+            "type": "user",
+            "logic": "POSITIVE",
+            "decisionStrategy": "UNANIMOUS",
+            "config": {
+              "users": "[\"service-account-customer-service\"]"
+            }
+          },
+          {
+            "name": "customer-service manages customers",
+            "description": "Create, enable and disable the sign-in accounts of customers, nothing else",
+            "type": "scope",
+            "logic": "POSITIVE",
+            "decisionStrategy": "UNANIMOUS",
+            "config": {
+              "defaultResourceType": "Groups",
+              "resources": "[\"0c1f6a3e-2b7d-4e59-8a41-6d2f3b9c7e10\"]",
+              "scopes": "[\"view\",\"view-members\",\"manage-membership\",\"manage-members\"]",
+              "applyPolicies": "[\"customer-service account\"]"
+            }
+          }
+        ],
+        "scopes": [
+          {
+            "name": "manage-group-membership"
+          },
+          {
+            "name": "map-roles-client-scope"
+          },
+          {
+            "name": "delegate-members"
+          },
+          {
+            "name": "map-role"
+          },
+          {
+            "name": "view-members"
+          },
+          {
+            "name": "reset-password"
+          },
+          {
+            "name": "manage"
+          },
+          {
+            "name": "impersonate-members"
+          },
+          {
+            "name": "delegate"
+          },
+          {
+            "name": "manage-members"
+          },
+          {
+            "name": "view"
+          },
+          {
+            "name": "manage-membership-of-members"
+          },
+          {
+            "name": "impersonate"
+          },
+          {
+            "name": "manage-membership"
+          },
+          {
+            "name": "map-role-composite"
+          },
+          {
+            "name": "map-roles"
+          },
+          {
+            "name": "map-role-client-scope"
+          },
+          {
+            "name": "map-roles-composite"
+          }
+        ],
+        "decisionStrategy": "UNANIMOUS"
+      }
     }
   ],
   "users": [
@@ -280,9 +569,7 @@
       "serviceAccountClientId": "customer-service",
       "clientRoles": {
         "realm-management": [
-          "manage-users",
-          "view-users",
-          "query-groups"
+          "query-users"
         ]
       }
     }
@@ -299,5 +586,223 @@
         }
       }
     ]
-  }
+  },
+  "adminPermissionsEnabled": true,
+  "authenticationFlows": [
+    {
+      "alias": "atlas browser",
+      "description": "Browser based authentication",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-spnego",
+          "authenticatorFlow": false,
+          "requirement": "DISABLED",
+          "priority": 20,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 25,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 26,
+          "autheticatorFlow": true,
+          "flowAlias": "atlas browser Organization",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "autheticatorFlow": true,
+          "flowAlias": "atlas browser forms",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "atlas browser Browser - Conditional 2FA",
+      "description": "Flow to determine if any 2FA is required for the authentication",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-configured",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorConfig": "atlas browser browser-conditional-credential",
+          "authenticator": "conditional-credential",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "webauthn-authenticator",
+          "authenticatorFlow": false,
+          "requirement": "DISABLED",
+          "priority": 40,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-recovery-authn-code-form",
+          "authenticatorFlow": false,
+          "requirement": "DISABLED",
+          "priority": 50,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "atlas browser Browser - Conditional Organization",
+      "description": "Flow to determine if the organization identity-first login is to be used",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-configured",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "organization",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "atlas browser Organization",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 10,
+          "autheticatorFlow": true,
+          "flowAlias": "atlas browser Browser - Conditional Organization",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "atlas browser forms",
+      "description": "Username, password, otp and other auth forms.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 0,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 10,
+          "autheticatorFlow": true,
+          "flowAlias": "atlas staff two-factor",
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "autheticatorFlow": true,
+          "flowAlias": "atlas browser Browser - Conditional 2FA",
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "atlas staff two-factor",
+      "description": "Bank staff always sign in with a second factor (OTP), configured at first sign-in",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticatorConfig": "staff role",
+          "authenticator": "conditional-user-role",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 0,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 0,
+          "autheticatorFlow": false,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "atlas browser browser-conditional-credential",
+      "config": {
+        "credentials": "webauthn-passwordless"
+      }
+    },
+    {
+      "alias": "staff role",
+      "config": {
+        "condUserRole": "EMPLOYEE",
+        "negate": "false"
+      }
+    }
+  ],
+  "browserFlow": "atlas browser"
 }

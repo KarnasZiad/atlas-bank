@@ -12,6 +12,7 @@ public interface PaymentOrderMapper {
     @Mapping(target = "amount", expression = "java(order.money().amount())")
     @Mapping(target = "initiatedBy", source = "initiator.username")
     @Mapping(target = "initiatorType", source = "initiator.type")
+    @Mapping(target = "reviewedBy", source = "reviewer.username")
     PaymentOrderView toView(PaymentOrder order);
 
     default String currencyCode(Currency currency) {

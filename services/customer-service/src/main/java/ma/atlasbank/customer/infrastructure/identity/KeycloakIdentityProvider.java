@@ -43,6 +43,13 @@ class KeycloakIdentityProvider implements IdentityProvider {
     }
 
     @Override
+    public Optional<String> findCustomerAccount(CustomerAccount account) {
+        return userNamed(account.email())
+                .filter(existing -> existing.attribute(properties.customerIdAttribute()).contains(account.customerId().toString()))
+                .map(KeycloakUser::id);
+    }
+
+    @Override
     public void enableAccount(String accountId) {
         update(accountId, KeycloakUser.enabled(true));
     }
@@ -87,17 +94,21 @@ class KeycloakIdentityProvider implements IdentityProvider {
      * Idempotent retry path: the account exists, but it must belong to this very customer.
      */
     private String findExisting(CustomerAccount account) {
-        List<KeycloakUser> matches = keycloak.get()
-                .uri("/admin/realms/{realm}/users?username={username}&exact=true", properties.realm(), account.email())
-                .retrieve()
-                .body(USER_LIST);
-        KeycloakUser existing = Optional.ofNullable(matches).orElse(List.of()).stream()
-                .findFirst()
+        KeycloakUser existing = userNamed(account.email())
                 .orElseThrow(() -> new IdentityProviderException("Account reported as existing but not found"));
         if (!existing.attribute(properties.customerIdAttribute()).contains(account.customerId().toString())) {
             throw new IdentityProviderException("An account with this username belongs to another person");
         }
         return existing.id();
+    }
+
+    private Optional<KeycloakUser> userNamed(String username) {
+        List<KeycloakUser> matches = keycloak.get()
+                .uri("/admin/realms/{realm}/users?username={username}&exact=true&briefRepresentation=false",
+                        properties.realm(), username)
+                .retrieve()
+                .body(USER_LIST);
+        return Optional.ofNullable(matches).orElse(List.of()).stream().findFirst();
     }
 
     private void requestFirstSignInActions(String accountId) {

@@ -11,6 +11,11 @@ spring:
       enabled: true
   lifecycle:
     timeout-per-shutdown-phase: 30s
+  # Outbound HTTP calls never wait forever on a slow dependency.
+  http:
+    clients:
+      connect-timeout: ${ATLAS_HTTP_CONNECT_TIMEOUT:2s}
+      read-timeout: ${ATLAS_HTTP_READ_TIMEOUT:10s}
   data:
     web:
       pageable:
@@ -28,6 +33,11 @@ spring:
       # Fail fast instead of queueing forever behind a row lock or a runaway query.
       data-source-properties:
         options: -c lock_timeout=${ATLAS_DB_LOCK_TIMEOUT:5s} -c statement_timeout=${ATLAS_DB_STATEMENT_TIMEOUT:30s}
+  # Migrations may run with the schema owner (SPRING_FLYWAY_USER / SPRING_FLYWAY_PASSWORD) while the
+  # application connects with a less privileged role, which migrations restrict further.
+  flyway:
+    placeholders:
+      runtime-role: ${ATLAS_DB_USERNAME:}
   jpa:
     open-in-view: false
     hibernate:
@@ -59,6 +69,13 @@ spring:
   kafka:
     bootstrap-servers: ${ATLAS_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     client-id: ${spring.application.name}
+    # Each service authenticates with its own principal; broker ACLs grant it only its topics.
+    # SASL_PLAINTEXT on a private network, SASL_SSL (or mTLS) anywhere else.
+    security:
+      protocol: ${ATLAS_KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+    properties:
+      sasl.mechanism: ${ATLAS_KAFKA_SASL_MECHANISM:PLAIN}
+      sasl.jaas.config: 'org.apache.kafka.common.security.plain.PlainLoginModule required username="${ATLAS_KAFKA_USERNAME:}" password="${ATLAS_KAFKA_PASSWORD:}";'
     # Payloads are converted to JSON bytes by the RecordMessageConverter (both directions), so the
     # Kafka (de)serializers only move bytes and no class name ever travels on the wire.
     producer:
@@ -76,6 +93,9 @@ spring:
     listener:
       ack-mode: record
       observation-enabled: true
+      # One consumer per partition of the platform topics (atlas.kafka.partitions): records of one key
+      # stay ordered, different keys are processed in parallel.
+      concurrency: ${ATLAS_KAFKA_LISTENER_CONCURRENCY:3}
     template:
       observation-enabled: true
 

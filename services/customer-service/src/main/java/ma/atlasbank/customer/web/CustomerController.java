@@ -94,15 +94,17 @@ class CustomerController {
     @StaffOnly
     @PostMapping(path = "/{customerId}/suspension", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Suspend a customer", description = "Disables sign-in and freezes the customer's accounts.")
-    CustomerView suspend(@PathVariable UUID customerId, @Valid @RequestBody StatusChangeCommand command) {
-        return commands.suspend(customerId, command.reason());
+    CustomerView suspend(@PathVariable UUID customerId, @Valid @RequestBody StatusChangeCommand command,
+                         Requester requester) {
+        return commands.suspend(customerId, command.reason(), requester);
     }
 
-    @StaffOnly
+    @AdminOnly
     @PostMapping("/{customerId}/reinstatement")
-    @Operation(summary = "Lift a suspension")
-    CustomerView reinstate(@PathVariable UUID customerId) {
-        return commands.reinstate(customerId);
+    @Operation(summary = "Lift a suspension",
+            description = "Supervisor decision, by another person than the one who suspended the customer.")
+    CustomerView reinstate(@PathVariable UUID customerId, Requester requester) {
+        return commands.reinstate(customerId, requester);
     }
 
     @AdminOnly

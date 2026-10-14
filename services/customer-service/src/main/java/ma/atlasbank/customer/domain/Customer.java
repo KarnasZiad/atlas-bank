@@ -10,8 +10,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -91,8 +93,21 @@ public class Customer extends AuditableEntity {
     @Column(name = "identity_user_id", length = 64)
     private String identityUserId;
 
+    @Column(name = "registered_by_subject", nullable = false, updatable = false, length = 64)
+    private String registeredBySubject;
+
+    @Column(name = "verified_by_subject", length = 64)
+    private String verifiedBySubject;
+
+    /** Employee who suspended the relationship, while it is suspended. */
+    @Column(name = "suspended_by", length = 100)
+    private String suspendedBy;
+
+    @Column(name = "suspended_by_subject", length = 64)
+    private String suspendedBySubject;
+
     public static Customer register(PersonalDetails details, ContactDetails contact, String nationalIdFingerprint,
-                                    String registeredBy) {
+                                    StaffMember registrar) {
         Customer customer = new Customer();
         customer.firstName = details.firstName();
         customer.lastName = details.lastName();
@@ -103,7 +118,8 @@ public class Customer extends AuditableEntity {
         customer.email = contact.email();
         customer.phoneNumber = contact.phoneNumber();
         customer.address = contact.address();
-        customer.registeredBy = Objects.requireNonNull(registeredBy);
+        customer.registeredBy = registrar.username();
+        customer.registeredBySubject = registrar.subject();
         customer.status = CustomerStatus.PENDING_VERIFICATION;
         return customer;
     }
@@ -112,38 +128,63 @@ public class Customer extends AuditableEntity {
      * KYC approval under the four-eyes principle: the employee who registered the customer
      * cannot be the one who approves the file.
      */
-    public void verify(String verifier, Instant verifiedAt) {
+    public void verify(StaffMember verifier, Instant verifiedAt) {
         if (status != CustomerStatus.PENDING_VERIFICATION) {
             throw invalidTransition(CustomerStatus.ACTIVE);
         }
-        if (registeredBy.equals(verifier)) {
+        if (verifier.isSamePersonAs(registeredBySubject)) {
             throw new OperationNotPermittedException(CustomerErrorCode.SELF_APPROVAL_FORBIDDEN,
                     "A customer file must be verified by a different employee than the one who registered it");
         }
         transitionTo(CustomerStatus.ACTIVE, null);
-        this.verifiedBy = verifier;
+        this.verifiedBy = verifier.username();
+        this.verifiedBySubject = verifier.subject();
         this.verifiedAt = verifiedAt;
     }
 
-    public void suspend(String reason) {
+    public void suspend(String reason, StaffMember suspender) {
         transitionTo(CustomerStatus.SUSPENDED, reason);
+        this.suspendedBy = suspender.username();
+        this.suspendedBySubject = suspender.subject();
     }
 
-    public void reinstate() {
+    /**
+     * Lifting a suspension takes a second pair of eyes: the employee who suspended the customer cannot
+     * be the one who reinstates them.
+     */
+    public void reinstate(StaffMember reinstater) {
         if (status != CustomerStatus.SUSPENDED) {
             throw invalidTransition(CustomerStatus.ACTIVE);
         }
+        if (reinstater.isSamePersonAs(suspendedBySubject)) {
+            throw new OperationNotPermittedException(CustomerErrorCode.SELF_RELEASE_FORBIDDEN,
+                    "A suspension must be lifted by a different employee than the one who decided it");
+        }
         transitionTo(CustomerStatus.ACTIVE, null);
+        this.suspendedBy = null;
+        this.suspendedBySubject = null;
     }
 
     public void close(String reason) {
         transitionTo(CustomerStatus.CLOSED, reason);
     }
 
-    public void updateContact(String phoneNumber, Address address) {
+    /**
+     * @return what actually changed, so that the customer can be warned (an unexpected change of
+     *         phone number is a classic step of an account takeover)
+     */
+    public Set<ContactField> updateContact(String phoneNumber, Address address) {
         requireNotClosed();
-        this.phoneNumber = Objects.requireNonNull(phoneNumber);
-        this.address = Objects.requireNonNull(address);
+        EnumSet<ContactField> changed = EnumSet.noneOf(ContactField.class);
+        if (!Objects.requireNonNull(phoneNumber).equals(this.phoneNumber)) {
+            changed.add(ContactField.PHONE_NUMBER);
+        }
+        if (!Objects.requireNonNull(address).equals(this.address)) {
+            changed.add(ContactField.POSTAL_ADDRESS);
+        }
+        this.phoneNumber = phoneNumber;
+        this.address = address;
+        return changed;
     }
 
     public void linkIdentity(String identityUserId) {

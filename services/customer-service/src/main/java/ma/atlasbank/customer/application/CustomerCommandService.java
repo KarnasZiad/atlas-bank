@@ -1,6 +1,7 @@
 package ma.atlasbank.customer.application;
 
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import ma.atlasbank.commons.error.BusinessRuleViolationException;
@@ -13,10 +14,12 @@ import ma.atlasbank.customer.application.port.NationalIdFingerprinter;
 import ma.atlasbank.customer.application.port.PhoneNumberNormalizer;
 import ma.atlasbank.customer.application.view.CustomerView;
 import ma.atlasbank.customer.domain.ContactDetails;
+import ma.atlasbank.customer.domain.ContactField;
 import ma.atlasbank.customer.domain.Customer;
 import ma.atlasbank.customer.domain.CustomerErrorCode;
 import ma.atlasbank.customer.domain.NationalId;
 import ma.atlasbank.customer.domain.PersonalDetails;
+import ma.atlasbank.customer.domain.StaffMember;
 import ma.atlasbank.platform.time.BusinessCalendar;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -61,24 +64,24 @@ public class CustomerCommandService {
             throw new ConflictException(CustomerErrorCode.NATIONAL_ID_ALREADY_REGISTERED,
                     "A customer is already registered with this national identity number");
         }
-        return saveAndPublish(Customer.register(details, contact, fingerprint, requester.username()));
+        return saveAndPublish(Customer.register(details, contact, fingerprint, staffMember(requester)));
     }
 
     public CustomerView verify(UUID customerId, Requester requester) {
         Customer customer = finder.getById(customerId);
-        customer.verify(requester.username(), calendar.now());
+        customer.verify(staffMember(requester), calendar.now());
         return saveAndPublish(customer);
     }
 
-    public CustomerView suspend(UUID customerId, String reason) {
+    public CustomerView suspend(UUID customerId, String reason, Requester requester) {
         Customer customer = finder.getById(customerId);
-        customer.suspend(reason);
+        customer.suspend(reason, staffMember(requester));
         return saveAndPublish(customer);
     }
 
-    public CustomerView reinstate(UUID customerId) {
+    public CustomerView reinstate(UUID customerId, Requester requester) {
         Customer customer = finder.getById(customerId);
-        customer.reinstate();
+        customer.reinstate(staffMember(requester));
         return saveAndPublish(customer);
     }
 
@@ -90,8 +93,17 @@ public class CustomerCommandService {
 
     public CustomerView updateContact(UUID customerId, UpdateContactCommand command, Requester requester) {
         Customer customer = finder.getVisibleTo(customerId, requester);
-        customer.updateContact(phoneNumbers.toE164(command.phoneNumber()), command.address().toAddress());
-        return saveAndPublish(customer);
+        Set<ContactField> changes = customer.updateContact(
+                phoneNumbers.toE164(command.phoneNumber()), command.address().toAddress());
+        saveAndPublish(customer);
+        if (!changes.isEmpty()) {
+            events.publishEvent(snapshots.contactChanged(customer, changes, requester));
+        }
+        return mapper.toViewFor(customer, requester);
+    }
+
+    private static StaffMember staffMember(Requester requester) {
+        return new StaffMember(requester.subject(), requester.username());
     }
 
     private CustomerView saveAndPublish(Customer customer) {

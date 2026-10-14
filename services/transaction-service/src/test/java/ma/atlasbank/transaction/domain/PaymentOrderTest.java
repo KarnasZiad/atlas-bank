@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 import ma.atlasbank.commons.error.BusinessRuleViolationException;
+import ma.atlasbank.commons.error.OperationNotPermittedException;
 import ma.atlasbank.commons.money.Money;
 import org.junit.jupiter.api.Test;
 
@@ -56,9 +57,66 @@ class PaymentOrderTest {
         assertThat(plain.canonicalForm()).isEqualTo(withDecimals.canonicalForm());
     }
 
+    @Test
+    void holdsAStaffOrderUntilAnotherEmployeeApprovesIt() {
+        PaymentOrder order = staffDeposit();
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.AWAITING_APPROVAL);
+
+        assertThatThrownBy(() -> order.approve(new Reviewer("agent-1", "agent.amina"), NOW))
+                .isInstanceOf(OperationNotPermittedException.class)
+                .hasMessageContaining("another employee");
+        assertThatThrownBy(() -> order.complete(NOW)).isInstanceOf(IllegalStateException.class);
+
+        order.approve(new Reviewer("agent-2", "agent.youssef"), NOW);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(order.approver()).hasValueSatisfying(approver -> assertThat(approver.getSubject()).isEqualTo("agent-2"));
+    }
+
+    @Test
+    void aRefusedOrderIsFinalAndCarriesNoApproval() {
+        PaymentOrder order = staffDeposit();
+
+        order.refuse(new Reviewer("agent-1", "agent.amina"), NOW);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.REJECTED);
+        assertThat(order.getRejectionCode()).isEqualTo("REFUSED_BY_REVIEWER");
+        assertThat(order.approver()).isEmpty();
+        assertThatThrownBy(() -> order.approve(new Reviewer("agent-2", "agent.youssef"), NOW))
+                .isInstanceOf(BusinessRuleViolationException.class);
+    }
+
+    @Test
+    void anUnreviewedOrderExpiresAndCanNoLongerBeApproved() {
+        PaymentOrder order = staffDeposit();
+
+        order.expire(NOW);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.REJECTED);
+        assertThat(order.getRejectionCode()).isEqualTo("APPROVAL_EXPIRED");
+        assertThatThrownBy(() -> order.approve(new Reviewer("agent-2", "agent.youssef"), NOW))
+                .isInstanceOf(BusinessRuleViolationException.class);
+        assertThatThrownBy(() -> transfer().expire(NOW)).isInstanceOf(BusinessRuleViolationException.class);
+    }
+
+    @Test
+    void ordersPlacedWithinTheLimitsNeedNoReview() {
+        PaymentOrder order = transfer();
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(order.approver()).isEmpty();
+        assertThatThrownBy(() -> order.approve(new Reviewer("agent-2", "agent.youssef"), NOW))
+                .isInstanceOf(BusinessRuleViolationException.class);
+    }
+
+    private static PaymentOrder staffDeposit() {
+        return PaymentOrder.place(OrderRequest.deposit("A", HUNDRED, null), "DEP-20261012-ABCDEFGH",
+                new Initiator("agent-1", "agent.amina", null, InitiatorType.EMPLOYEE), "key-0123456789abcdef",
+                "fingerprint", NOW, true);
+    }
+
     private static PaymentOrder transfer() {
         return PaymentOrder.place(OrderRequest.transfer("A", "B", HUNDRED, "rent"), "TRF-20261012-ABCDEFGH",
                 new Initiator("subject", "salma", UUID.randomUUID(), InitiatorType.CUSTOMER), "key-0123456789abcdef",
-                "fingerprint", NOW);
+                "fingerprint", NOW, false);
     }
 }

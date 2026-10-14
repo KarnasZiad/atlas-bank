@@ -9,11 +9,14 @@ import lombok.RequiredArgsConstructor;
 import ma.atlasbank.account.application.AccountCommandService;
 import ma.atlasbank.account.application.AccountQueryService;
 import ma.atlasbank.account.application.AccountSearchCriteria;
+import ma.atlasbank.account.application.LedgerReconciliation;
 import ma.atlasbank.account.application.command.OpenAccountCommand;
 import ma.atlasbank.account.application.command.StatusChangeCommand;
 import ma.atlasbank.account.application.view.AccountView;
 import ma.atlasbank.account.application.view.LedgerEntryView;
+import ma.atlasbank.account.application.view.ReconciliationReport;
 import ma.atlasbank.commons.security.Requester;
+import ma.atlasbank.platform.security.AdminOnly;
 import ma.atlasbank.platform.security.CustomerOrStaff;
 import ma.atlasbank.platform.security.StaffOnly;
 import ma.atlasbank.platform.web.Locations;
@@ -43,6 +46,7 @@ class AccountController {
 
     private final AccountCommandService commands;
     private final AccountQueryService queries;
+    private final LedgerReconciliation reconciliation;
 
     @StaffOnly
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -60,6 +64,13 @@ class AccountController {
             @ParameterObject @PageableDefault(sort = "openedAt", direction = Sort.Direction.DESC) Pageable pageable,
             Requester requester) {
         return new PagedModel<>(queries.search(criteria, requester, pageable));
+    }
+
+    @AdminOnly
+    @GetMapping("/reconciliation")
+    @Operation(summary = "Check the books", description = "Balances against their entries, and every transaction balanced.")
+    ReconciliationReport reconciliation() {
+        return reconciliation.reconcile();
     }
 
     @CustomerOrStaff
@@ -84,15 +95,17 @@ class AccountController {
     @StaffOnly
     @PostMapping(path = "/{accountId}/freeze", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Freeze debits on an account")
-    AccountView freeze(@PathVariable UUID accountId, @Valid @RequestBody StatusChangeCommand command) {
-        return commands.freeze(accountId, command.reason());
+    AccountView freeze(@PathVariable UUID accountId, @Valid @RequestBody StatusChangeCommand command,
+                       Requester requester) {
+        return commands.freeze(accountId, command.reason(), requester);
     }
 
-    @StaffOnly
+    @AdminOnly
     @PostMapping("/{accountId}/unfreeze")
-    @Operation(summary = "Lift a manual freeze")
-    AccountView unfreeze(@PathVariable UUID accountId) {
-        return commands.unfreeze(accountId);
+    @Operation(summary = "Lift a manual freeze",
+            description = "Supervisor decision, by another person than the one who froze the account.")
+    AccountView unfreeze(@PathVariable UUID accountId, Requester requester) {
+        return commands.unfreeze(accountId, requester);
     }
 
     @StaffOnly

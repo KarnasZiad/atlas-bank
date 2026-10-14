@@ -3,6 +3,7 @@ package ma.atlasbank.notification.application;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import ma.atlasbank.contracts.customer.CustomerSnapshot;
+import ma.atlasbank.contracts.customer.CustomerStatus;
 import ma.atlasbank.notification.application.port.RecipientRepository;
 import ma.atlasbank.notification.domain.Recipient;
 import ma.atlasbank.notification.domain.Recipient.ContactCard;
@@ -11,7 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Maintains the contact details of customers from their snapshots; stale snapshots are ignored.
+ * Maintains the contact details of customers from their snapshots; stale snapshots are ignored, and
+ * the contact details of a closed customer are erased.
  */
 @Service
 @Transactional
@@ -22,6 +24,12 @@ public class RecipientDirectory {
     private final BusinessCalendar calendar;
 
     public void apply(CustomerSnapshot snapshot) {
+        if (snapshot.status() == CustomerStatus.CLOSED) {
+            recipients.findById(snapshot.customerId()).ifPresentOrElse(
+                    known -> known.erase(snapshot.version(), calendar.now()),
+                    () -> recipients.save(Recipient.erased(snapshot.customerId(), snapshot.version(), calendar.now())));
+            return;
+        }
         ContactCard card = new ContactCard(
                 snapshot.firstName() + " " + snapshot.lastName(),
                 snapshot.email(),

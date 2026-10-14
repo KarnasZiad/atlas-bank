@@ -18,6 +18,7 @@ import java.util.UUID;
 import ma.atlasbank.account.application.AccountCommandService;
 import ma.atlasbank.account.application.AccountQueryService;
 import ma.atlasbank.account.application.AccountSearchCriteria;
+import ma.atlasbank.account.application.LedgerReconciliation;
 import ma.atlasbank.account.application.command.OpenAccountCommand;
 import ma.atlasbank.account.application.view.AccountView;
 import ma.atlasbank.account.domain.AccountErrorCode;
@@ -49,6 +50,15 @@ class AccountControllerTest {
 
     @MockitoBean
     private AccountQueryService queries;
+
+    @MockitoBean
+    private LedgerReconciliation reconciliation;
+
+    @Test
+    void onlyAdministratorsReconcileTheBooks() throws Exception {
+        mvc.perform(get(ACCOUNTS + "/reconciliation").with(TestTokens.employee())).andExpect(status().isForbidden());
+        mvc.perform(get(ACCOUNTS + "/reconciliation").with(TestTokens.admin())).andExpect(status().isOk());
+    }
 
     @Test
     void onlyStaffOpenAccounts() throws Exception {
@@ -95,9 +105,20 @@ class AccountControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(reason))
                 .andExpect(status().isForbidden());
 
-        given(commands.freeze(eq(accountId), eq("Suspicious activity"))).willReturn(view(accountId));
+        given(commands.freeze(eq(accountId), eq("Suspicious activity"), any(Requester.class))).willReturn(view(accountId));
         mvc.perform(post(ACCOUNTS + "/{id}/freeze", accountId).with(TestTokens.employee())
                         .contentType(MediaType.APPLICATION_JSON).content(reason))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void onlyASupervisorLiftsAFreeze() throws Exception {
+        UUID accountId = UUID.randomUUID();
+        given(commands.unfreeze(eq(accountId), any(Requester.class))).willReturn(view(accountId));
+
+        mvc.perform(post(ACCOUNTS + "/{id}/unfreeze", accountId).with(TestTokens.employee()))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(ACCOUNTS + "/{id}/unfreeze", accountId).with(TestTokens.admin()))
                 .andExpect(status().isOk());
     }
 

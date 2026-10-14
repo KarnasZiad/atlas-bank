@@ -4,23 +4,27 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import ma.atlasbank.contracts.payment.TransactionKind;
 import ma.atlasbank.contracts.payment.TransactionRequested;
+import ma.atlasbank.contracts.payment.TransactionRequested.Approval;
 import ma.atlasbank.contracts.payment.TransactionRequested.Initiator;
 import ma.atlasbank.contracts.payment.TransactionRequested.InitiatorType;
 import ma.atlasbank.platform.time.BusinessCalendar;
+import ma.atlasbank.transaction.application.port.OrderSigner;
 import ma.atlasbank.transaction.domain.PaymentOrder;
 import org.springframework.stereotype.Component;
 
 /**
- * Translates an accepted order into the published language understood by the ledger.
+ * Translates an order ready for posting into the published language understood by the ledger,
+ * signed so that the ledger can check it comes from this service unaltered.
  */
 @Component
 @RequiredArgsConstructor
 class TransactionRequestedFactory {
 
     private final BusinessCalendar calendar;
+    private final OrderSigner signer;
 
     TransactionRequested requested(PaymentOrder order) {
-        return new TransactionRequested(
+        return signer.sign(new TransactionRequested(
                 UUID.randomUUID(),
                 calendar.now(),
                 order.getId(),
@@ -35,6 +39,8 @@ class TransactionRequestedFactory {
                         order.getInitiator().getSubject(),
                         order.getInitiator().getUsername(),
                         order.getInitiator().getCustomerId(),
-                        InitiatorType.valueOf(order.getInitiator().getType().name())));
+                        InitiatorType.valueOf(order.getInitiator().getType().name())),
+                order.approver().map(approver -> new Approval(approver.getSubject(), approver.getUsername())).orElse(null),
+                null));
     }
 }

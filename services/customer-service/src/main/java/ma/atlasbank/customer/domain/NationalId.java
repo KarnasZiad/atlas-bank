@@ -13,8 +13,11 @@ import ma.atlasbank.commons.error.BusinessRuleViolationException;
  */
 public record NationalId(String value) {
 
-    /** Shared with the API validation so that both layers accept exactly the same inputs. */
-    public static final String FORMAT = "^[A-Za-z]{1,2}\\d{1,7}$";
+    /**
+     * Shared with the API validation so that both layers accept exactly the same inputs. At least three
+     * digits, so that the masked form never reveals the whole number.
+     */
+    public static final String FORMAT = "^[A-Za-z]{1,2}\\d{3,6}$";
 
     private static final Pattern PATTERN = Pattern.compile(FORMAT);
     private static final int VISIBLE_SUFFIX_LENGTH = 2;

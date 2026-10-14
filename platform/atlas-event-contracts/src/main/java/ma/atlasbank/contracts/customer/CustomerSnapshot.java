@@ -9,6 +9,9 @@ import ma.atlasbank.contracts.IntegrationEvent;
  *
  * <p>Consumers keep a local projection and apply a snapshot only when its {@code version}
  * is newer than the one they hold, which makes processing idempotent and order-tolerant.
+ *
+ * <p>The snapshot of a {@link CustomerStatus#CLOSED closed} customer carries no personal data: names,
+ * e-mail, phone number and language are {@code null}, and consumers erase what they kept.
  */
 public record CustomerSnapshot(
         UUID eventId,

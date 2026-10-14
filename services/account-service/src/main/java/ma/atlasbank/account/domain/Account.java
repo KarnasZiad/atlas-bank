@@ -16,6 +16,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import ma.atlasbank.commons.error.BusinessRuleViolationException;
+import ma.atlasbank.commons.error.OperationNotPermittedException;
 import ma.atlasbank.commons.money.Money;
 import ma.atlasbank.platform.jpa.AuditableEntity;
 import org.hibernate.annotations.UuidGenerator;
@@ -26,6 +27,11 @@ import org.hibernate.envers.NotAudited;
  * Bank account aggregate. The balance only changes through {@link #debit} and {@link #credit},
  * each producing the ledger entry that justifies the change: there is no way to alter money
  * without leaving an immutable trace.
+ *
+ * <p>Each balance reads in the natural direction of its account: a customer account shows what the
+ * bank owes the customer (a credit increases it), the teller cash shows the cash held at the counter
+ * (a debit, i.e. cash coming in, increases it). Every posting debits and credits the same amount, so
+ * the customer balances always add up to the cash taken in.
  */
 @Getter
 @Entity
@@ -42,7 +48,8 @@ public class Account extends AuditableEntity {
     @Column(name = "account_number", nullable = false, unique = true, updatable = false, length = 34)
     private String accountNumber;
 
-    @Column(name = "customer_id", nullable = false, updatable = false)
+    /** {@code null} for the internal accounts of the bank. */
+    @Column(name = "customer_id", updatable = false)
     private UUID customerId;
 
     @Enumerated(EnumType.STRING)
@@ -74,6 +81,13 @@ public class Account extends AuditableEntity {
     @Column(name = "status_reason", length = 500)
     private String statusReason;
 
+    /** Employee who decided a manual freeze, while it lasts. */
+    @Column(name = "frozen_by", length = 100)
+    private String frozenBy;
+
+    @Column(name = "frozen_by_subject", length = 64)
+    private String frozenBySubject;
+
     @Column(name = "opened_at", nullable = false, updatable = false)
     private Instant openedAt;
 
@@ -93,6 +107,27 @@ public class Account extends AuditableEntity {
         account.status = AccountStatus.ACTIVE;
         account.openedAt = Objects.requireNonNull(openedAt);
         return account;
+    }
+
+    /**
+     * The cash drawer of the branch in one currency. It starts empty and can never pay out more cash
+     * than it took in.
+     */
+    public static Account openTellerCash(String accountNumber, Currency currency, Instant openedAt) {
+        Account till = new Account();
+        till.accountNumber = Objects.requireNonNull(accountNumber);
+        till.type = AccountType.TELLER_CASH;
+        till.currency = Objects.requireNonNull(currency);
+        till.balance = BigDecimal.ZERO;
+        till.overdraftLimit = BigDecimal.ZERO;
+        till.dailyDebitLimit = BigDecimal.ZERO;
+        till.status = AccountStatus.ACTIVE;
+        till.openedAt = Objects.requireNonNull(openedAt);
+        return till;
+    }
+
+    public boolean isInternal() {
+        return type.isInternal();
     }
 
     public Money balance() {
@@ -120,6 +155,11 @@ public class Account extends AuditableEntity {
                              String counterparty, Instant bookedAt) {
         requireStatus(AccountStatus.ACTIVE);
         requireValid(amount);
+        if (isInternal()) {
+            // Cash coming into the till.
+            balance = balance.add(amount.amount());
+            return LedgerEntry.record(this, transaction, EntryDirection.DEBIT, amount, counterparty, bookedAt);
+        }
         if (amount.isGreaterThan(availableBalance())) {
             throw new BusinessRuleViolationException(AccountErrorCode.INSUFFICIENT_FUNDS,
                     "Insufficient funds on account %s", accountNumber);
@@ -140,7 +180,16 @@ public class Account extends AuditableEntity {
             throw closed();
         }
         requireValid(amount);
-        balance = balance.add(amount.amount());
+        if (isInternal()) {
+            // Cash handed out at the counter: only what the till holds.
+            if (amount.isGreaterThan(balance())) {
+                throw new BusinessRuleViolationException(AccountErrorCode.INSUFFICIENT_CASH,
+                        "Not enough cash at the counter to pay out %s", amount);
+            }
+            balance = balance.subtract(amount.amount());
+        } else {
+            balance = balance.add(amount.amount());
+        }
         return LedgerEntry.record(this, transaction, EntryDirection.CREDIT, amount, counterparty, bookedAt);
     }
 
@@ -149,6 +198,15 @@ public class Account extends AuditableEntity {
      * so that lifting the suspension later does not release it.
      */
     public void freeze(FreezeCause cause, String reason) {
+        freeze(cause, reason, null);
+    }
+
+    /**
+     * @param decidedBy employee who decided a manual freeze; {@code null} when the bank's own rules froze
+     *                  the account (customer suspension)
+     */
+    public void freeze(FreezeCause cause, String reason, StaffMember decidedBy) {
+        requireCustomerAccount();
         if (status == AccountStatus.CLOSED) {
             throw closed();
         }
@@ -158,13 +216,22 @@ public class Account extends AuditableEntity {
         status = AccountStatus.FROZEN;
         freezeCause = cause;
         statusReason = reason;
+        frozenBy = decidedBy == null ? null : decidedBy.username();
+        frozenBySubject = decidedBy == null ? null : decidedBy.subject();
     }
 
-    public void unfreeze() {
+    /**
+     * Lifting a freeze takes a second pair of eyes: the employee who froze the account cannot be the one
+     * who releases it.
+     */
+    public void unfreeze(StaffMember releasedBy) {
+        requireCustomerAccount();
         requireStatus(AccountStatus.FROZEN);
-        status = AccountStatus.ACTIVE;
-        freezeCause = null;
-        statusReason = null;
+        if (frozenBySubject != null && frozenBySubject.equals(releasedBy.subject())) {
+            throw new OperationNotPermittedException(AccountErrorCode.SELF_RELEASE_FORBIDDEN,
+                    "A freeze must be lifted by a different employee than the one who decided it");
+        }
+        lift();
     }
 
     /**
@@ -174,11 +241,20 @@ public class Account extends AuditableEntity {
         if (status != AccountStatus.FROZEN || freezeCause != FreezeCause.CUSTOMER_SUSPENDED) {
             return false;
         }
-        unfreeze();
+        lift();
         return true;
     }
 
+    private void lift() {
+        status = AccountStatus.ACTIVE;
+        freezeCause = null;
+        statusReason = null;
+        frozenBy = null;
+        frozenBySubject = null;
+    }
+
     public void close(String reason, Instant closedAt) {
+        requireCustomerAccount();
         if (status == AccountStatus.CLOSED) {
             throw closed();
         }
@@ -193,7 +269,14 @@ public class Account extends AuditableEntity {
     }
 
     public boolean isOwnedBy(UUID customer) {
-        return customerId.equals(customer);
+        return customerId != null && customerId.equals(customer);
+    }
+
+    private void requireCustomerAccount() {
+        if (isInternal()) {
+            throw new BusinessRuleViolationException(AccountErrorCode.INTERNAL_ACCOUNT,
+                    "Account %s is an internal account of the bank", accountNumber);
+        }
     }
 
     private void requireStatus(AccountStatus expected) {

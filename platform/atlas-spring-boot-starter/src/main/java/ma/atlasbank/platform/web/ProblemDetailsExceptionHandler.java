@@ -2,6 +2,7 @@ package ma.atlasbank.platform.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -16,6 +17,7 @@ import ma.atlasbank.commons.money.InvalidMoneyException;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.dao.PessimisticLockingFailureException;
@@ -26,6 +28,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -46,6 +49,8 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 public class ProblemDetailsExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProblemDetailsExceptionHandler.class);
+
+    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
     private final ProblemDetailEnricher enricher;
 
@@ -79,6 +84,19 @@ public class ProblemDetailsExceptionHandler extends ResponseEntityExceptionHandl
                 "You are not allowed to perform this operation", request);
     }
 
+    /**
+     * The token passed signature checks but its content is unusable (e.g. a malformed customer claim),
+     * detected while resolving the caller in the controller.
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    ResponseEntity<ProblemDetail> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
+        LOG.info("Rejected token on {}: {}", request.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\"")
+                .body(problem(HttpStatus.UNAUTHORIZED, PlatformErrorCode.INVALID_TOKEN,
+                        "The access token cannot be used for this request", request));
+    }
+
     @ExceptionHandler({OptimisticLockingFailureException.class, PessimisticLockingFailureException.class})
     ProblemDetail handleConcurrentModification(RuntimeException ex, HttpServletRequest request) {
         LOG.info("Concurrent modification detected on {}: {}", request.getRequestURI(), ex.getMessage());
@@ -88,9 +106,16 @@ public class ProblemDetailsExceptionHandler extends ResponseEntityExceptionHandl
 
     /**
      * A unique constraint fired: typically two concurrent requests creating the same resource.
+     *
+     * <p>JPA reports it as a plain {@link DataIntegrityViolationException} (only JDBC templates
+     * produce {@link DuplicateKeyException}), so the SQL state tells a duplicate from another
+     * integrity failure, which remains an unexpected error.
      */
-    @ExceptionHandler(DuplicateKeyException.class)
-    ProblemDetail handleDuplicate(DuplicateKeyException ex, HttpServletRequest request) {
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ProblemDetail handleIntegrityViolation(DataIntegrityViolationException ex, HttpServletRequest request) {
+        if (!(ex instanceof DuplicateKeyException) && !isUniqueViolation(ex)) {
+            return handleUnexpected(ex, request);
+        }
         LOG.info("Duplicate key on {}: {}", request.getRequestURI(), ex.getMostSpecificCause().getMessage());
         return problem(HttpStatus.CONFLICT, PlatformErrorCode.DUPLICATE_RESOURCE,
                 "The resource already exists or is being created by a concurrent request", request);
@@ -182,6 +207,20 @@ public class ProblemDetailsExceptionHandler extends ResponseEntityExceptionHandl
         problem.setTitle(status.getReasonPhrase());
         problem.setInstance(URI.create(request.getRequestURI()));
         return enricher.enrich(problem, code, request);
+    }
+
+    /**
+     * SQL state {@code 23505} (unique violation) anywhere in the cause chain, batch failures included.
+     */
+    private static boolean isUniqueViolation(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            for (SQLException sql = cause instanceof SQLException found ? found : null; sql != null; sql = sql.getNextException()) {
+                if (UNIQUE_VIOLATION_SQL_STATE.equals(sql.getSQLState())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

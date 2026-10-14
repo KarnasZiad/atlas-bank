@@ -7,6 +7,10 @@ import ma.atlasbank.customer.domain.CustomerStatus;
 
 /**
  * Full customer profile. The national identity number is always masked.
+ *
+ * @param statusReason internal note of the bank, shown to staff only
+ * @param registeredBy employee who registered the file, shown to staff only
+ * @param verifiedBy   employee who approved the file, shown to staff only
  */
 public record CustomerView(
         UUID id,

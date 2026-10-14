@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import ma.atlasbank.contracts.Topics;
 import ma.atlasbank.contracts.account.AccountOpened;
 import ma.atlasbank.contracts.account.AccountStatusChanged;
+import ma.atlasbank.contracts.customer.ContactDetailsChanged;
 import ma.atlasbank.contracts.customer.CustomerSnapshot;
 import ma.atlasbank.contracts.ledger.TransactionOutcome;
 import ma.atlasbank.notification.application.CustomerNotifier;
@@ -21,6 +22,11 @@ class NotificationEventListeners {
     @KafkaListener(id = "notification-recipients", topics = Topics.CUSTOMER_SNAPSHOTS)
     void onCustomerSnapshot(CustomerSnapshot snapshot) {
         recipients.apply(snapshot);
+    }
+
+    @KafkaListener(id = "notification-contact-changed", topics = Topics.CUSTOMER_CONTACT_CHANGED)
+    void onContactDetailsChanged(ContactDetailsChanged event) {
+        notifier.onContactDetailsChanged(event);
     }
 
     @KafkaListener(id = "notification-account-opened", topics = Topics.ACCOUNT_OPENED)

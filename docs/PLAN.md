@@ -44,19 +44,21 @@ faible couplage, configuration externalisée, observabilité et tests automatis�
 8. **Qualité** : tests unitaires, tests de slices web sécurisés, tests d'intégration Testcontainers, ArchUnit.
 9. **Documentation** : README, architecture, ADR, guide d'exploitation, scénario de démonstration.
 
-## 5. État d'avancement (12/10/2026)
+## 5. État d'avancement (14/10/2026)
 
 | Lot | État | Vérification |
 |---|---|---|
-| 1. Socle | Terminé | Build Maven complet ; tests de `Money` |
-| 2. customer-service | Terminé | 21 tests unitaires et web + 3 tests d'intégration (PostgreSQL et Kafka réels) |
-| 3. account-service | Terminé | 16 tests unitaires et web + 9 tests d'intégration, dont 40 virements croisés concurrents |
-| 4. transaction-service | Terminé | 8 tests unitaires + 8 tests d'intégration |
-| 5. notification-service | Terminé | 7 tests unitaires + 4 tests d'intégration |
-| 6. api-gateway | Terminé | 6 tests d'intégration (Redis réel) |
-| 7. Déploiement | Écrit, configuration validée (`docker compose config`) | **Pile complète pas encore démarrée** : disque de la machine plein pendant la session, voir le README |
-| 8. Qualité | Terminé | ArchUnit dans chaque service, CI GitHub Actions, profil d'audit OWASP |
-| 9. Documentation | Terminé | README, architecture, ADR 0001 à 0007, scénario `scripts/smoke-test.ps1` |
+| 1. Socle | Terminé | Build Maven complet ; tests de `Money`, de la signature des ordres et du traitement des erreurs |
+| 2. customer-service | Terminé | 25 tests unitaires et web + 4 tests d'intégration (PostgreSQL et Kafka réels), dont alerte de changement de coordonnées et clôture sans données personnelles |
+| 3. account-service | Terminé | 21 tests unitaires et web + 17 tests d'intégration, dont 40 virements croisés concurrents, ordre forgé, caisse, réconciliation |
+| 4. transaction-service | Terminé | 12 tests unitaires + 15 tests d'intégration, dont 8 requêtes simultanées avec la même clé, le flux 4 yeux et l'expiration des approbations |
+| 5. notification-service | Terminé | 8 tests unitaires + 6 tests d'intégration |
+| 6. api-gateway | Terminé | 3 tests unitaires + 7 tests d'intégration (Redis réel) |
+| 7. Déploiement | Terminé | Pile complète démarrée (`docker compose`), `scripts/smoke-test.ps1` passe de bout en bout ; ACL Kafka, rôles PostgreSQL et permissions Keycloak vérifiés sur instances réelles |
+| 8. Qualité | Terminé | ArchUnit dans chaque service ; CI GitHub Actions (tests, pile complète + smoke test, scan Trivy des images), CodeQL, Dependabot, actions épinglées par commit, profil d'audit OWASP |
+| 9. Documentation | Terminé | README, architecture, ADR 0001 à 0008, scénario `scripts/smoke-test.ps1` |
+| 10. Durcissement (revue de sécurité) | Terminé | Ordres signés, Kafka SASL + ACL, 4 yeux du personnel, partie double et réconciliation, moindre privilège PostgreSQL et Keycloak, MFA du personnel, motifs internes masqués, 409 au lieu de 500 sur doublon |
+| 11. Contrôles complémentaires | Terminé | Levée des sanctions par un superviseur distinct, 4 yeux sur le `sub`, expiration des approbations, alerte des ordres bloqués, alerte de changement de coordonnées, effacement des données des clients clôturés, IP réelle derrière proxy, build Docker par module |
 
 ## 6. Définition de « terminé » pour chaque lot
 

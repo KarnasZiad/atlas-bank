@@ -18,6 +18,14 @@ domaines (statut d'un client) sans appel synchrone.
 - **Event-carried state transfer** pour les clients : un snapshot complet et versionné sur un topic
   compacté. Chaque consommateur tient une projection locale et ignore les snapshots plus anciens que le
   sien. Cela tolère le désordre et le rejeu.
+- **Minimisation des données personnelles** : le snapshot d'un client clôturé ne porte plus ni nom, ni
+  e-mail, ni téléphone. Dernier enregistrement de sa clé, il remplace les précédents, que la
+  compaction efface au plus tard après `max.compaction.lag.ms` (7 jours par défaut,
+  `atlas.kafka.max-compaction-lag`). notification-service efface alors les coordonnées de sa projection
+  et cesse d'écrire au client. La base de customer-service reste le registre conservé pour les
+  obligations légales.
+- Les changements de coordonnées sont publiés à part (`atlas.customer.contact-changed.v1`), sans les
+  nouvelles valeurs : notification-service prévient le client à son adresse e-mail, qui n'a pas changé.
 - **Consommateurs idempotents** partout : reçu d'imputation (grand livre), clé unique
   (événement, client, type) pour les notifications, transitions d'état idempotentes pour les ordres.
 - Sérialisation : JSON produit et lu par un unique convertisseur, **sans en-tête de type** ; le

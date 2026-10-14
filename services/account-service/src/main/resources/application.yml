@@ -23,3 +23,11 @@ atlas:
       SAVINGS:
         MAD: { overdraft-limit: 0, daily-debit-limit: 20000 }
         EUR: { overdraft-limit: 0, daily-debit-limit: 2000 }
+    # Only orders signed by the transaction service are posted.
+    # No default on purpose: startup fails until the environment provides the trusted key.
+    order-signing:
+      key-id: ${ATLAS_ORDER_SIGNING_KEY_ID:}
+      public-key: ${ATLAS_ORDER_SIGNING_PUBLIC_KEY:}
+    # Consistency checks of the books (balances vs entries, balanced transactions).
+    reconciliation:
+      cron: ${ATLAS_LEDGER_RECONCILIATION_CRON:0 0 * * * *}

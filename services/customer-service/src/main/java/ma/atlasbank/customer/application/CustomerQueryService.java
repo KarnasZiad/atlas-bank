@@ -24,7 +24,7 @@ public class CustomerQueryService {
     private final CustomerViewMapper mapper;
 
     public CustomerView get(UUID customerId, Requester requester) {
-        return mapper.toView(finder.getVisibleTo(customerId, requester));
+        return mapper.toViewFor(finder.getVisibleTo(customerId, requester), requester);
     }
 
     /**

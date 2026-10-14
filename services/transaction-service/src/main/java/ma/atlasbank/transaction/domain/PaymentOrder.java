@@ -12,10 +12,13 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Currency;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import ma.atlasbank.commons.error.BusinessRuleViolationException;
+import ma.atlasbank.commons.error.OperationNotPermittedException;
 import ma.atlasbank.commons.money.Money;
 import ma.atlasbank.platform.jpa.AuditableEntity;
 import org.hibernate.annotations.UuidGenerator;
@@ -23,6 +26,9 @@ import org.hibernate.annotations.UuidGenerator;
 /**
  * A payment order accepted from a channel (customer app, branch teller) and tracked until the
  * ledger posts or rejects it. The order never moves money itself.
+ *
+ * <p>Staff orders above the four-eyes limits are held until a <em>different</em> employee approves
+ * them; only then are they handed to the ledger.
  */
 @Getter
 @Entity
@@ -81,8 +87,22 @@ public class PaymentOrder extends AuditableEntity {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    /** Set at intake: the order exceeded the limits an employee may use alone. */
+    @Column(name = "approval_required", nullable = false, updatable = false)
+    private boolean approvalRequired;
+
+    @Embedded
+    private Reviewer reviewer;
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
+    /**
+     * @param approvalRequired whether a second employee must approve the order before it reaches the ledger
+     */
     public static PaymentOrder place(OrderRequest request, String reference, Initiator initiator,
-                                     String idempotencyKey, String requestFingerprint, Instant requestedAt) {
+                                     String idempotencyKey, String requestFingerprint, Instant requestedAt,
+                                     boolean approvalRequired) {
         PaymentOrder order = new PaymentOrder();
         order.kind = request.kind();
         order.sourceAccountNumber = request.sourceAccountNumber();
@@ -95,8 +115,59 @@ public class PaymentOrder extends AuditableEntity {
         order.idempotencyKey = Objects.requireNonNull(idempotencyKey);
         order.requestFingerprint = Objects.requireNonNull(requestFingerprint);
         order.requestedAt = Objects.requireNonNull(requestedAt);
-        order.status = OrderStatus.PENDING;
+        order.approvalRequired = approvalRequired;
+        order.status = approvalRequired ? OrderStatus.AWAITING_APPROVAL : OrderStatus.PENDING;
         return order;
+    }
+
+    /**
+     * Four-eyes principle: whoever placed the order cannot be the one who approves it.
+     */
+    public void approve(Reviewer approver, Instant at) {
+        requireAwaitingApproval();
+        if (approver.getSubject().equals(initiator.getSubject())) {
+            throw new OperationNotPermittedException(TransactionErrorCode.SELF_APPROVAL_FORBIDDEN,
+                    "Order %s must be approved by another employee than the one who placed it", reference);
+        }
+        status = OrderStatus.PENDING;
+        reviewer = approver;
+        reviewedAt = at;
+    }
+
+    /**
+     * Refusing is always allowed, including by the employee who placed the order (who withdraws it).
+     */
+    public void refuse(Reviewer refuser, Instant at) {
+        requireAwaitingApproval();
+        status = OrderStatus.REJECTED;
+        rejectionCode = TransactionErrorCode.REFUSED_BY_REVIEWER.code();
+        reviewer = refuser;
+        reviewedAt = at;
+        completedAt = at;
+    }
+
+    /**
+     * An approval is only valid on the business day the order was placed: an order still unreviewed at
+     * the end of that day is rejected, never executed on a stale decision.
+     */
+    public void expire(Instant at) {
+        requireAwaitingApproval();
+        status = OrderStatus.REJECTED;
+        rejectionCode = TransactionErrorCode.APPROVAL_EXPIRED.code();
+        completedAt = at;
+    }
+
+    /** Employee who approved the order, when a review was required and granted. */
+    public Optional<Reviewer> approver() {
+        boolean refused = TransactionErrorCode.REFUSED_BY_REVIEWER.code().equals(rejectionCode);
+        return approvalRequired && reviewer != null && !refused ? Optional.of(reviewer) : Optional.empty();
+    }
+
+    private void requireAwaitingApproval() {
+        if (status != OrderStatus.AWAITING_APPROVAL) {
+            throw new BusinessRuleViolationException(TransactionErrorCode.ORDER_NOT_AWAITING_APPROVAL,
+                    "Order %s is %s, it is not awaiting approval", reference, status);
+        }
     }
 
     /**

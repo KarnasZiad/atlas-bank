@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import ma.atlasbank.commons.money.Money;
 import ma.atlasbank.contracts.account.AccountOpened;
 import ma.atlasbank.contracts.account.AccountStatusChanged;
+import ma.atlasbank.contracts.customer.ContactDetailsChanged;
 import ma.atlasbank.contracts.ledger.TransactionOutcome;
 import ma.atlasbank.contracts.ledger.TransactionOutcome.Party;
 import ma.atlasbank.contracts.ledger.TransactionOutcome.PostingResult;
@@ -69,6 +70,16 @@ public class CustomerNotifier {
                 recipient.getFullName(), mask(event.accountNumber()), LocalizedLabel.of(event.status())));
     }
 
+    /**
+     * Security warning on the e-mail address, which did not change: whoever changed the phone number
+     * or the address, the customer hears about it.
+     */
+    public void onContactDetailsChanged(ContactDetailsChanged event) {
+        notify(event.customerId(), NotificationType.CONTACT_DETAILS_CHANGED, event.eventId(), recipient -> List.of(
+                recipient.getFullName(), LocalizedLabel.contactChanges(event.changes()),
+                LocalizedLabel.changedBy(event.changedByCustomer())));
+    }
+
     public void onTransactionOutcome(TransactionOutcome outcome) {
         Money amount = Money.of(outcome.amount(), outcome.currency());
         if (outcome.result() == PostingResult.REJECTED) {
@@ -108,6 +119,10 @@ public class CustomerNotifier {
         }
         Recipient recipient = recipients.findById(customerId)
                 .orElseThrow(() -> new RecipientNotYetKnownException(customerId));
+        if (recipient.isErased()) {
+            log.debug("{} not sent: the relationship with customer {} is closed", type, customerId);
+            return;
+        }
         RenderedMessage message = renderer.render(type, recipient.getLanguage(), arguments.of(recipient));
         sender.send(recipient.getEmail(), message);
         notifications.save(Notification.sent(customerId, type, Channel.EMAIL, sourceEventId, recipient.getEmail(),

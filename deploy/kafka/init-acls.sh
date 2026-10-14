@@ -11,6 +11,7 @@ source /opt/atlas/admin-client.sh
 admin_client_config /tmp/admin.properties
 
 CUSTOMER_SNAPSHOTS=atlas.customer.snapshots.v1
+CUSTOMER_CONTACT_CHANGED=atlas.customer.contact-changed.v1
 ACCOUNT_OPENED=atlas.account.opened.v1
 ACCOUNT_STATUS_CHANGED=atlas.account.status-changed.v1
 TRANSACTION_REQUESTED=atlas.payment.transaction-requested.v1
@@ -28,7 +29,7 @@ acl --allow-principal User:customer-service --allow-principal User:account-servi
     --resource-pattern-type prefixed --topic atlas.
 
 # Producers.
-acl --allow-principal User:customer-service --operation Write --topic "$CUSTOMER_SNAPSHOTS"
+acl --allow-principal User:customer-service --operation Write --topic "$CUSTOMER_SNAPSHOTS" --topic "$CUSTOMER_CONTACT_CHANGED"
 acl --allow-principal User:transaction-service --operation Write --topic "$TRANSACTION_REQUESTED"
 acl --allow-principal User:account-service --operation Write \
     --topic "$ACCOUNT_OPENED" --topic "$ACCOUNT_STATUS_CHANGED" --topic "$TRANSACTION_OUTCOMES"
@@ -45,11 +46,12 @@ acl --allow-principal User:account-service --operation Write \
     --topic "$TRANSACTION_REQUESTED.dlt" --topic "$CUSTOMER_SNAPSHOTS.dlt"
 
 acl --allow-principal User:notification-service --operation Read \
-    --topic "$CUSTOMER_SNAPSHOTS" --topic "$ACCOUNT_OPENED" --topic "$ACCOUNT_STATUS_CHANGED" --topic "$TRANSACTION_OUTCOMES" \
-    --group notification-recipients --group notification-account-opened --group notification-account-status \
-    --group notification-transaction-outcomes
+    --topic "$CUSTOMER_SNAPSHOTS" --topic "$CUSTOMER_CONTACT_CHANGED" --topic "$ACCOUNT_OPENED" \
+    --topic "$ACCOUNT_STATUS_CHANGED" --topic "$TRANSACTION_OUTCOMES" \
+    --group notification-recipients --group notification-contact-changed --group notification-account-opened \
+    --group notification-account-status --group notification-transaction-outcomes
 acl --allow-principal User:notification-service --operation Write \
-    --topic "$CUSTOMER_SNAPSHOTS.dlt" --topic "$ACCOUNT_OPENED.dlt" --topic "$ACCOUNT_STATUS_CHANGED.dlt" \
-    --topic "$TRANSACTION_OUTCOMES.dlt"
+    --topic "$CUSTOMER_SNAPSHOTS.dlt" --topic "$CUSTOMER_CONTACT_CHANGED.dlt" --topic "$ACCOUNT_OPENED.dlt" \
+    --topic "$ACCOUNT_STATUS_CHANGED.dlt" --topic "$TRANSACTION_OUTCOMES.dlt"
 
 echo "Kafka ACLs in place."

@@ -13,8 +13,9 @@ import org.junit.jupiter.api.Test;
 
 class CustomerTest {
 
-    private static final String REGISTRAR = "agent.amina";
-    private static final String REVIEWER = "agent.youssef";
+    private static final StaffMember REGISTRAR = new StaffMember("sub-amina", "agent.amina");
+    private static final StaffMember REVIEWER = new StaffMember("sub-youssef", "agent.youssef");
+    private static final StaffMember SUPERVISOR = new StaffMember("sub-admin", "admin.atlas");
     private static final Instant NOW = Instant.parse("2026-10-12T09:00:00Z");
 
     @Test
@@ -22,7 +23,7 @@ class CustomerTest {
         Customer customer = newCustomer();
 
         assertThat(customer.getStatus()).isEqualTo(CustomerStatus.PENDING_VERIFICATION);
-        assertThat(customer.getRegisteredBy()).isEqualTo(REGISTRAR);
+        assertThat(customer.getRegisteredBy()).isEqualTo("agent.amina");
         assertThat(customer.getStatus().allowsSignIn()).isFalse();
     }
 
@@ -33,7 +34,7 @@ class CustomerTest {
         customer.verify(REVIEWER, NOW);
 
         assertThat(customer.getStatus()).isEqualTo(CustomerStatus.ACTIVE);
-        assertThat(customer.getVerifiedBy()).isEqualTo(REVIEWER);
+        assertThat(customer.getVerifiedBy()).isEqualTo("agent.youssef");
         assertThat(customer.getVerifiedAt()).isEqualTo(NOW);
     }
 
@@ -49,10 +50,19 @@ class CustomerTest {
     }
 
     @Test
+    void comparesEmployeesOnTheirImmutableSubjectNotTheirLogin() {
+        Customer customer = newCustomer();
+
+        // The registrar's login was renamed: still the same person.
+        assertThatThrownBy(() -> customer.verify(new StaffMember("sub-amina", "agent.amina.renamed"), NOW))
+                .isInstanceOf(OperationNotPermittedException.class);
+    }
+
+    @Test
     void cannotBeVerifiedTwice() {
         Customer customer = activeCustomer();
 
-        assertThatThrownBy(() -> customer.verify("agent.other", NOW))
+        assertThatThrownBy(() -> customer.verify(new StaffMember("sub-other", "agent.other"), NOW))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("ACTIVE");
     }
@@ -61,20 +71,44 @@ class CustomerTest {
     void suspensionAndReinstatementFollowTheLifecycle() {
         Customer customer = activeCustomer();
 
-        customer.suspend("Suspicious activity");
+        customer.suspend("Suspicious activity", REVIEWER);
         assertThat(customer.getStatus()).isEqualTo(CustomerStatus.SUSPENDED);
         assertThat(customer.getStatusReason()).isEqualTo("Suspicious activity");
+        assertThat(customer.getSuspendedBy()).isEqualTo("agent.youssef");
 
-        customer.reinstate();
+        customer.reinstate(SUPERVISOR);
         assertThat(customer.getStatus()).isEqualTo(CustomerStatus.ACTIVE);
         assertThat(customer.getStatusReason()).isNull();
+        assertThat(customer.getSuspendedBy()).isNull();
+    }
+
+    @Test
+    void aSuspensionIsLiftedByAnotherPerson() {
+        Customer customer = activeCustomer();
+        customer.suspend("Suspicious activity", SUPERVISOR);
+
+        assertThatThrownBy(() -> customer.reinstate(SUPERVISOR))
+                .isInstanceOf(OperationNotPermittedException.class)
+                .extracting(error -> ((DomainException) error).errorCode())
+                .isEqualTo(CustomerErrorCode.SELF_RELEASE_FORBIDDEN);
+        assertThat(customer.getStatus()).isEqualTo(CustomerStatus.SUSPENDED);
     }
 
     @Test
     void onlySuspendedCustomersCanBeReinstated() {
         Customer customer = newCustomer();
 
-        assertThatThrownBy(customer::reinstate).isInstanceOf(BusinessRuleViolationException.class);
+        assertThatThrownBy(() -> customer.reinstate(SUPERVISOR)).isInstanceOf(BusinessRuleViolationException.class);
+    }
+
+    @Test
+    void reportsWhichContactDetailsChanged() {
+        Customer customer = activeCustomer();
+
+        assertThat(customer.updateContact("+212612345678", address())).isEmpty();
+        assertThat(customer.updateContact("+212698765432", address())).containsExactly(ContactField.PHONE_NUMBER);
+        assertThat(customer.updateContact("+212698765432", new Address("1 rue de Fès", "Rabat", "10000", "MA")))
+                .containsExactly(ContactField.POSTAL_ADDRESS);
     }
 
     @Test
@@ -82,7 +116,7 @@ class CustomerTest {
         Customer customer = activeCustomer();
         customer.close("Customer request");
 
-        assertThatThrownBy(() -> customer.suspend("any")).isInstanceOf(BusinessRuleViolationException.class);
+        assertThatThrownBy(() -> customer.suspend("any", REVIEWER)).isInstanceOf(BusinessRuleViolationException.class);
         assertThatThrownBy(() -> customer.updateContact("+212600000000", address()))
                 .isInstanceOf(BusinessRuleViolationException.class);
     }
@@ -99,6 +133,9 @@ class CustomerTest {
     @Test
     void rejectsMalformedNationalIdentityNumbers() {
         assertThatThrownBy(() -> new NationalId("123-ABC")).isInstanceOf(BusinessRuleViolationException.class);
+        // Too short to be a real number, and its masked form would reveal it entirely.
+        assertThatThrownBy(() -> new NationalId("A1")).isInstanceOf(BusinessRuleViolationException.class);
+        assertThatThrownBy(() -> new NationalId("AB1234567")).isInstanceOf(BusinessRuleViolationException.class);
     }
 
     @Test

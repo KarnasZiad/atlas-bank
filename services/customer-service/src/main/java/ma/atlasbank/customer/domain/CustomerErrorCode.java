@@ -13,5 +13,6 @@ public enum CustomerErrorCode implements ErrorCode {
     CUSTOMER_UNDERAGE,
     INVALID_STATUS_TRANSITION,
     SELF_APPROVAL_FORBIDDEN,
+    SELF_RELEASE_FORBIDDEN,
     CUSTOMER_CLOSED
 }

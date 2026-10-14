@@ -53,12 +53,14 @@ public record AtlasProperties(
      * @param replicas              replication factor of the topics owned by the service
      * @param deadLetterTopicSuffix suffix of the topic receiving records that exhausted their retries
      * @param declareTopics         whether the service ensures the platform topics exist at startup
+     * @param maxCompactionLag      longest time a superseded record may stay in a compacted topic
      */
     public record Kafka(
             @DefaultValue("true") boolean declareTopics,
             @DefaultValue("3") int partitions,
             @DefaultValue("1") int replicas,
             @DefaultValue(".dlt") String deadLetterTopicSuffix,
+            @DefaultValue("7d") Duration maxCompactionLag,
             @DefaultValue Retry retry) {
 
         /**

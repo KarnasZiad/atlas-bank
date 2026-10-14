@@ -104,6 +104,31 @@ class AccountTest {
     }
 
     @Test
+    void theTillHoldsTheCashTakenInAndPaysOutNoMore() {
+        Account till = Account.openTellerCash("CASH-00100-MAD", MAD, NOW);
+
+        LedgerEntry cashIn = till.debit(mad("300"), reference(TransactionKind.DEPOSIT), NOTHING_TODAY, "MA64", NOW);
+        till.credit(mad("100"), reference(TransactionKind.WITHDRAWAL), "MA64", NOW);
+
+        assertThat(cashIn.getDirection()).isEqualTo(EntryDirection.DEBIT);
+        assertThat(cashIn.getBalanceAfter()).isEqualByComparingTo("300");
+        assertThat(till.balance()).isEqualTo(mad("200"));
+        assertRejected(() -> till.credit(mad("200.01"), reference(TransactionKind.WITHDRAWAL), "MA64", NOW),
+                AccountErrorCode.INSUFFICIENT_CASH);
+        assertThat(till.balance()).isEqualTo(mad("200"));
+    }
+
+    @Test
+    void theTillIsNeitherOwnedByACustomerNorOperatedLikeOne() {
+        Account till = Account.openTellerCash("CASH-00100-MAD", MAD, NOW);
+
+        assertThat(till.isInternal()).isTrue();
+        assertThat(till.isOwnedBy(null)).isFalse();
+        assertRejected(() -> till.freeze(FreezeCause.MANUAL, "test"), AccountErrorCode.INTERNAL_ACCOUNT);
+        assertRejected(() -> till.close("test", NOW), AccountErrorCode.INTERNAL_ACCOUNT);
+    }
+
+    @Test
     void holderProjectionIgnoresStaleSnapshots() {
         AccountHolder holder = AccountHolder.of(UUID.randomUUID(), HolderStatus.ACTIVE, 3, NOW);
 

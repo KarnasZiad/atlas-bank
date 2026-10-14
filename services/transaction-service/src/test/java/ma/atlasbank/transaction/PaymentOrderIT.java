@@ -10,19 +10,29 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
+import java.security.PublicKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.IntStream;
 import ma.atlasbank.contracts.Topics;
 import ma.atlasbank.contracts.ledger.TransactionOutcome;
 import ma.atlasbank.contracts.ledger.TransactionOutcome.Party;
 import ma.atlasbank.contracts.ledger.TransactionOutcome.PostingResult;
+import ma.atlasbank.contracts.payment.OrderSignatures;
 import ma.atlasbank.contracts.payment.TransactionKind;
 import ma.atlasbank.contracts.payment.TransactionRequested;
 import ma.atlasbank.contracts.payment.TransactionRequested.InitiatorType;
 import ma.atlasbank.testsupport.containers.InfrastructureContainers;
 import ma.atlasbank.testsupport.kafka.TopicReader;
+import ma.atlasbank.testsupport.security.TestOrderSigning;
 import ma.atlasbank.testsupport.security.TestTokens;
 import org.iban4j.CountryCode;
 import org.iban4j.Iban;
@@ -34,7 +44,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.json.JsonMapper;
@@ -45,9 +57,12 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(InfrastructureContainers.class)
+@TestPropertySource(properties = {TestOrderSigning.SIGNER_KEY_ID, TestOrderSigning.SIGNER_PRIVATE_KEY})
 class PaymentOrderIT {
 
     private static final String TRANSACTIONS = "/api/v1/transactions";
+    private static final Map<String, PublicKey> TRUSTED_KEYS =
+            Map.of(TestOrderSigning.KEY_ID, OrderSignatures.publicKey(TestOrderSigning.PUBLIC_KEY));
     private static final String SOURCE = iban(1);
     private static final String TARGET = iban(2);
 
@@ -87,7 +102,97 @@ class PaymentOrderIT {
                     assertThat(order.amount()).isEqualByComparingTo("250.00");
                     assertThat(order.initiator().type()).isEqualTo(InitiatorType.CUSTOMER);
                     assertThat(order.initiator().customerId()).isEqualTo(customerId);
+                    assertThat(order.approval()).isNull();
+                    assertThat(OrderSignatures.isAuthentic(order, TRUSTED_KEYS)).isTrue();
                 });
+    }
+
+    @Test
+    void concurrentRetriesWithTheSameKeyCreateASingleOrder() throws Exception {
+        RequestPostProcessor customer = TestTokens.customer(UUID.randomUUID());
+        String key = key();
+        CountDownLatch start = new CountDownLatch(1);
+        List<Callable<MvcResult>> retries = IntStream.range(0, 8).<Callable<MvcResult>>mapToObj(i -> () -> {
+            start.await();
+            return transfer(customer, key, "75.00").andReturn();
+        }).toList();
+
+        List<MvcResult> results;
+        try (ExecutorService executor = Executors.newFixedThreadPool(retries.size())) {
+            List<Future<MvcResult>> futures = retries.stream().map(executor::submit).toList();
+            start.countDown();
+            results = futures.stream().map(PaymentOrderIT::resultOf).toList();
+        }
+
+        assertThat(results).allSatisfy(result -> assertThat(result.getResponse().getStatus()).isEqualTo(202));
+        assertThat(results.stream().map(PaymentOrderIT::orderIdOf).distinct()).hasSize(1);
+        assertThat(results).filteredOn(result -> "false".equals(result.getResponse().getHeader("Idempotent-Replayed")))
+                .hasSize(1);
+    }
+
+    @Test
+    void holdsALargeStaffOrderUntilASecondEmployeeApprovesIt() throws Exception {
+        String response = deposit(TestTokens.employee("agent.maker"), "20000.00")
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("AWAITING_APPROVAL"))
+                .andExpect(jsonPath("$.approvalRequired").value(true))
+                .andReturn().getResponse().getContentAsString();
+        UUID orderId = UUID.fromString(JsonPath.read(response, "$.id"));
+
+        mvc.perform(post(TRANSACTIONS + "/{id}/approval", orderId).with(TestTokens.employee("agent.maker")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("SELF_APPROVAL_FORBIDDEN"));
+        mvc.perform(post(TRANSACTIONS + "/{id}/approval", orderId).with(TestTokens.customer(UUID.randomUUID())))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(TRANSACTIONS + "/{id}/approval", orderId).with(TestTokens.employee("agent.checker")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.reviewedBy").value("agent.checker"));
+
+        List<TransactionRequested> published = new TopicReader(consumerFactory, jsonMapper).await(
+                Topics.TRANSACTION_REQUESTED, TransactionRequested.class,
+                received -> received.stream().anyMatch(order -> order.transactionId().equals(orderId)),
+                Duration.ofSeconds(30));
+        assertThat(published)
+                .filteredOn(order -> order.transactionId().equals(orderId))
+                .singleElement()
+                .satisfies(order -> {
+                    assertThat(order.approval().subject()).isEqualTo("agent.checker");
+                    assertThat(order.initiator().subject()).isEqualTo("agent.maker");
+                    assertThat(OrderSignatures.isAuthentic(order, TRUSTED_KEYS)).isTrue();
+                });
+    }
+
+    @Test
+    void anEmployeeNeedsApprovalOnceTheDailyLimitIsReached() throws Exception {
+        RequestPostProcessor teller = TestTokens.employee("agent.busy");
+        for (int i = 0; i < 5; i++) {
+            deposit(teller, "9000.00").andExpect(jsonPath("$.status").value("PENDING"));
+        }
+
+        deposit(teller, "6000.00").andExpect(jsonPath("$.status").value("AWAITING_APPROVAL"));
+        deposit(TestTokens.employee("agent.rested"), "6000.00").andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    void aRefusedStaffOrderNeverReachesTheLedger() throws Exception {
+        String response = deposit(TestTokens.employee("agent.hasty"), "15000.00").andReturn().getResponse().getContentAsString();
+        String orderId = JsonPath.read(response, "$.id");
+
+        mvc.perform(post(TRANSACTIONS + "/{id}/refusal", orderId).with(TestTokens.employee("agent.careful")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionCode").value("REFUSED_BY_REVIEWER"));
+        mvc.perform(post(TRANSACTIONS + "/{id}/approval", orderId).with(TestTokens.employee("agent.careful")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("ORDER_NOT_AWAITING_APPROVAL"));
+    }
+
+    @Test
+    void customerTransfersNeverWaitForStaffApproval() throws Exception {
+        transfer(TestTokens.customer(UUID.randomUUID()), key(), "90000.00")
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"));
     }
 
     @Test
@@ -185,6 +290,30 @@ class PaymentOrderIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(1))
                 .andExpect(jsonPath("$.page.totalElements").value(1));
+    }
+
+    private ResultActions deposit(RequestPostProcessor teller, String amount) throws Exception {
+        return mvc.perform(post(TRANSACTIONS + "/deposits").with(teller).header("Idempotency-Key", key())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"accountNumber": "%s", "amount": %s, "currency": "MAD"}
+                        """.formatted(TARGET, amount)));
+    }
+
+    private static MvcResult resultOf(Future<MvcResult> result) {
+        try {
+            return result.get();
+        } catch (Exception failure) {
+            throw new IllegalStateException(failure);
+        }
+    }
+
+    private static String orderIdOf(MvcResult result) {
+        try {
+            return JsonPath.read(result.getResponse().getContentAsString(), "$.id");
+        } catch (java.io.UnsupportedEncodingException unreadable) {
+            throw new IllegalStateException(unreadable);
+        }
     }
 
     private ResultActions transfer(RequestPostProcessor token, String key, String amount) throws Exception {

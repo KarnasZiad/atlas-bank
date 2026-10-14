@@ -18,6 +18,7 @@ import java.util.UUID;
 import ma.atlasbank.account.application.AccountCommandService;
 import ma.atlasbank.account.application.AccountQueryService;
 import ma.atlasbank.account.application.AccountSearchCriteria;
+import ma.atlasbank.account.application.LedgerReconciliation;
 import ma.atlasbank.account.application.command.OpenAccountCommand;
 import ma.atlasbank.account.application.view.AccountView;
 import ma.atlasbank.account.domain.AccountErrorCode;
@@ -49,6 +50,15 @@ class AccountControllerTest {
 
     @MockitoBean
     private AccountQueryService queries;
+
+    @MockitoBean
+    private LedgerReconciliation reconciliation;
+
+    @Test
+    void onlyAdministratorsReconcileTheBooks() throws Exception {
+        mvc.perform(get(ACCOUNTS + "/reconciliation").with(TestTokens.employee())).andExpect(status().isForbidden());
+        mvc.perform(get(ACCOUNTS + "/reconciliation").with(TestTokens.admin())).andExpect(status().isOk());
+    }
 
     @Test
     void onlyStaffOpenAccounts() throws Exception {

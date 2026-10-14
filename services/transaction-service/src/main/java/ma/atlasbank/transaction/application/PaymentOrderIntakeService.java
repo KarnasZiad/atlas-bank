@@ -63,17 +63,37 @@ public class PaymentOrderIntakeService {
                 amountOf(command.amount(), command.currency()), command.description()), idempotencyKey, requester);
     }
 
+    /**
+     * Intakes of one initiator are serialized: a retry racing its original request finds it and is
+     * replayed (instead of failing on the unique key), and an employee cannot stay under the four-eyes
+     * limits by sending orders in parallel.
+     */
     private OrderSubmission submit(OrderRequest request, String idempotencyKey, Requester requester) {
         String fingerprint = fingerprint(request);
+        orders.lockIntakeOf(requester.subject());
         Optional<PaymentOrder> previous = orders.findByInitiatorSubjectAndIdempotencyKey(requester.subject(), idempotencyKey);
         if (previous.isPresent()) {
             return replay(previous.get(), fingerprint);
         }
+        Initiator initiator = initiatorOf(requester);
+        boolean approvalRequired = initiator.getType() == InitiatorType.EMPLOYEE && staffOrderNeedsApproval(request, initiator);
         PaymentOrder order = orders.saveAndFlush(PaymentOrder.place(
-                request, references.nextReference(request.kind()), initiatorOf(requester),
-                idempotencyKey, fingerprint, calendar.now()));
-        publisher.publishEvent(events.requested(order));
+                request, references.nextReference(request.kind()), initiator,
+                idempotencyKey, fingerprint, calendar.now(), approvalRequired));
+        if (!approvalRequired) {
+            publisher.publishEvent(events.requested(order));
+        }
         return new OrderSubmission(mapper.toView(order), false);
+    }
+
+    /**
+     * Customers can only debit their own accounts (checked by the ledger); an employee acts on any
+     * account, so beyond the limits of what one person may do alone a second employee must approve.
+     */
+    private boolean staffOrderNeedsApproval(OrderRequest request, Initiator initiator) {
+        BigDecimal placedAloneToday = orders.sumPlacedWithoutApprovalSince(
+                initiator.getSubject(), request.amount().currency(), calendar.startOfToday());
+        return settings.staffOrderRequiresApproval(request.amount(), placedAloneToday);
     }
 
     /**

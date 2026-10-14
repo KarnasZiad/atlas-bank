@@ -2,6 +2,7 @@ package ma.atlasbank.platform.autoconfigure;
 
 import jakarta.validation.ValidationException;
 import ma.atlasbank.commons.error.DomainException;
+import ma.atlasbank.commons.security.UntrustedMessageException;
 import ma.atlasbank.platform.config.AtlasProperties;
 import ma.atlasbank.platform.messaging.PlatformTopics;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -66,7 +67,8 @@ public class AtlasKafkaAutoConfiguration {
 
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
         // Deterministic failures: retrying cannot succeed, so go straight to the dead-letter topic.
-        errorHandler.addNotRetryableExceptions(DomainException.class, ValidationException.class);
+        errorHandler.addNotRetryableExceptions(DomainException.class, ValidationException.class,
+                UntrustedMessageException.class);
         return errorHandler;
     }
 }

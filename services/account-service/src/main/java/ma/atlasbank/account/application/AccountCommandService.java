@@ -42,6 +42,10 @@ public class AccountCommandService {
      * customers: no synchronous call to the customer service is needed.
      */
     public AccountView open(OpenAccountCommand command) {
+        if (command.type().isInternal()) {
+            throw new BusinessRuleViolationException(AccountErrorCode.INTERNAL_ACCOUNT,
+                    "%s accounts belong to the bank and cannot be opened for a customer", command.type());
+        }
         AccountHolder holder = holders.findById(command.customerId())
                 .filter(AccountHolder::canOpenAccounts)
                 .orElseThrow(() -> new BusinessRuleViolationException(AccountErrorCode.CUSTOMER_NOT_ELIGIBLE,

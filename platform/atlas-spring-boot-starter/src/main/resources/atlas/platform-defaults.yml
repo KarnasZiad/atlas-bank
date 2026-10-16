@@ -6,9 +6,14 @@
 # Secrets are never defaulted: they must come from the environment.
 # ---------------------------------------------------------------------------------------
 spring:
+  # Platform threads on Java 21: a virtual thread waiting inside a synchronized block pins its
+  # carrier, and the Kafka clients wait that way in every poll. With one consumer per partition,
+  # the consumers then hold every carrier and starve the other virtual threads, HTTP included
+  # (seen on 2-CPU CI runners: listeners failing to start, health checks timing out). Re-enable
+  # when the runtime moves to Java 24+, where synchronized no longer pins (JEP 491).
   threads:
     virtual:
-      enabled: true
+      enabled: false
   lifecycle:
     timeout-per-shutdown-phase: 30s
   # Outbound HTTP calls never wait forever on a slow dependency.

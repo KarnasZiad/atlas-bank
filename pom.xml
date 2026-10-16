@@ -41,7 +41,7 @@
              CVE-2026-65905 and CVE-2026-68525 (critical) are fixed from 11.0.25. Remove once Spring Boot
              manages a fixed Tomcat. -->
         <tomcat.version>11.0.27</tomcat.version>
-        <dependency-check.version>12.2.2</dependency-check.version>
+        <dependency-check.version>13.0.0</dependency-check.version>
     </properties>
 
     <dependencyManagement>

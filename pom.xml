@@ -21,6 +21,7 @@
     <modules>
         <module>platform/atlas-commons</module>
         <module>platform/atlas-event-contracts</module>
+        <module>platform/atlas-outbox</module>
         <module>platform/atlas-spring-boot-starter</module>
         <module>platform/atlas-test-support</module>
         <module>services</module>
@@ -78,6 +79,12 @@
                 <groupId>ma.atlasbank</groupId>
                 <artifactId>atlas-event-contracts</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ma.atlasbank</groupId>
+                <artifactId>atlas-outbox</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
             </dependency>
             <dependency>
                 <groupId>ma.atlasbank</groupId>

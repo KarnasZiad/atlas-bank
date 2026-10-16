@@ -8,6 +8,9 @@ par les tests, configuration externalisée et observabilité de bout en bout.
 
 > Toutes les décisions structurantes sont expliquées dans [`docs/adr/`](docs/adr) et la vue
 > d'ensemble dans [`docs/architecture.md`](docs/architecture.md).
+>
+> **Nouveau sur le projet ?** Le [guide de compréhension](docs/GUIDE.md) explique pas à pas le
+> fonctionnement de l'application, les patterns utilisés et pourquoi.
 
 ---
 

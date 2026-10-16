@@ -37,6 +37,10 @@
         <iban4j.version>3.2.14-RELEASE</iban4j.version>
         <libphonenumber.version>9.0.41</libphonenumber.version>
         <archunit.version>1.5.1</archunit.version>
+        <!-- Security override of the version managed by Spring Boot 4.0.8 (11.0.24): CVE-2026-65182,
+             CVE-2026-65905 and CVE-2026-68525 (critical) are fixed from 11.0.25. Remove once Spring Boot
+             manages a fixed Tomcat. -->
+        <tomcat.version>11.0.27</tomcat.version>
         <dependency-check.version>12.2.2</dependency-check.version>
     </properties>
 

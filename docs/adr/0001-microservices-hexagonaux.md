@@ -12,8 +12,15 @@ règles métier testables.
 ## Décision
 
 - Quatre services métier découpés par **propriété des données**, plus une gateway.
-- Java 21, **Spring Boot 4.0.8** et **Spring Cloud 2025.1.3** : couple aligné et supporté
-  (Spring Boot 3.5 n'est plus maintenu en open source depuis juin 2026).
+- Java 21, **Spring Boot 4.1** et **Spring Cloud 2025.1** : couple supporté (Spring Cloud 2025.1
+  déclare compatibles Boot 4.0 et 4.1 ; Spring Boot 3.5 n'est plus maintenu en open source depuis
+  juin 2026). Les montées de Spring, Spring Cloud, Modulith et springdoc arrivent ensemble, en une seule
+  PR Dependabot.
+- **Threads classiques** dans les services : sous Java 21, un thread virtuel qui attend dans un bloc
+  `synchronized` bloque son thread porteur, ce que fait le client Kafka à chaque `poll`. Avec un
+  consommateur par partition, les porteurs étaient monopolisés et même les requêtes HTTP n'étaient
+  plus servies (constaté en CI). Les threads virtuels seront réactivés avec un runtime Java 24 ou plus
+  (JEP 491).
 - Dans chaque service : couches `domain` / `application` / `infrastructure` / `web` ; le sens des
   dépendances est **testé** par ArchUnit (`HexagonalArchitectureRules`), pas seulement documenté.
 - Hexagonal *pragmatique* : les entités du domaine portent les annotations JPA, ce qui évite un

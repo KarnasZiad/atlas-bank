@@ -22,7 +22,7 @@ faible couplage, configuration externalisée, observabilité et tests automatis�
 
 | Sujet | Choix | Pourquoi |
 |---|---|---|
-| Stack | Java 21, Spring Boot 4.0.8, Spring Cloud 2025.1.3 | Versions supportées et alignées entre elles |
+| Stack | Java 21, Spring Boot 4.1, Spring Cloud 2025.1 | Versions supportées et alignées entre elles |
 | Identité | Keycloak 26 (OIDC/OAuth2, JWT) | IdP standard du marché : MFA, politique de mot de passe, anti-bruteforce sans code maison |
 | Entrée | Spring Cloud Gateway | Point d'entrée unique : validation JWT, rate limiting Redis, circuit breaker, en-têtes de sécurité |
 | Données | PostgreSQL, une base et un utilisateur par service, Flyway, `ddl-auto=validate` | Isolation des données, migrations versionnées |

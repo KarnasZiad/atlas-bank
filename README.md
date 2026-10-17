@@ -73,8 +73,8 @@ Modules partagés (`platform/`) : `atlas-commons` (noyau sans framework : `Money
 (sécurité, erreurs RFC 9457, audit JPA, Kafka, OpenAPI, configuration partagée),
 `atlas-test-support` (règles ArchUnit, Testcontainers, jetons de test).
 
-**Stack** : Java 21, Spring Boot 4.0.8, Spring Cloud 2025.1.3 (Gateway), Spring Modulith 2.0 (outbox),
-Hibernate 7.2 + Envers, PostgreSQL 18, Kafka 4.3 (KRaft), Keycloak 26.8, Redis 8, Flyway, MapStruct,
+**Stack** : Java 21, Spring Boot 4.1, Spring Cloud 2025.1 (Gateway), Spring Modulith 2.1 (outbox),
+Hibernate 7.4 + Envers, PostgreSQL 18, Kafka 4.3 (KRaft), Keycloak 26.8, Redis 8, Flyway, MapStruct,
 iban4j, libphonenumber, Testcontainers 2, ArchUnit.
 
 ## Démarrage rapide

@@ -7,6 +7,7 @@ import com.redis.testcontainers.RedisContainer;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.IntStream;
+import ma.atlasbank.testsupport.containers.ComposeImages;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,7 +21,6 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.JwtMutator;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import org.testcontainers.utility.DockerImageName;
 
 /**
  * Edge behaviour with a real Redis (rate limiting) and unreachable downstream services
@@ -102,7 +102,7 @@ class EdgeIT {
         @Bean
         @ServiceConnection
         RedisContainer redis() {
-            return new RedisContainer(DockerImageName.parse("redis:8.2-alpine"));
+            return new RedisContainer(ComposeImages.of("redis"));
         }
     }
 }

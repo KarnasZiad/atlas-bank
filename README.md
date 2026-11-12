@@ -294,6 +294,7 @@ atlas-bank/
 │   ├── transaction-service/
 │   └── notification-service/
 ├── edge/api-gateway/
+├── frontend/                       interface web React (banque en ligne + back-office), voir son README
 ├── deploy/                         realm Keycloak, init PostgreSQL, ACL Kafka, observabilité
 ├── scripts/init-env.sh             génération du .env (secrets aléatoires, clés de signature)
 ├── scripts/smoke-test.ps1          scénario de bout en bout
@@ -341,4 +342,6 @@ Ce dépôt est une base de production réaliste, pas un système homologué. Pou
 - **Contrôles** : approvisionnement de la caisse depuis la réserve centrale.
 - **Fonctionnel** : virements externes (compensation interbancaire), change de devises, intérêts
   d'épargne, frais, relevés PDF, ordres permanents, plafonds par client.
-- **Interface** : application web ou mobile cliente (le client OAuth2 `atlas-web` est prêt, en PKCE).
+- **Interface** : une interface web React existe dans [`frontend/`](frontend) (espace client et
+  back-office, connexion PKCE via le client `atlas-web`) ; restent une application mobile et un BFF
+  pour ne plus garder les jetons dans le navigateur.

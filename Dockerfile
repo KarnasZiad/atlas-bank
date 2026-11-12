@@ -7,13 +7,13 @@
 #
 # The base image is pinned by digest (reproducible builds); Dependabot proposes the updates.
 
-FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555 AS layers
+FROM eclipse-temurin:25-jre-alpine@sha256:3c0a9084927a221ccd1d007fcaf614465672c0af37aaa834c5184483afe56d61 AS layers
 WORKDIR /layers
 COPY target/*.jar app.jar
 # Spring Boot layers: dependencies change rarely, application classes often -> better image caching.
 RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination extracted
 
-FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
+FROM eclipse-temurin:25-jre-alpine@sha256:3c0a9084927a221ccd1d007fcaf614465672c0af37aaa834c5184483afe56d61
 RUN addgroup -S atlas && adduser -S -G atlas -H -s /sbin/nologin atlas
 WORKDIR /app
 COPY --from=layers /layers/extracted/dependencies/ ./

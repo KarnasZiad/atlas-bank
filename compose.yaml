@@ -57,7 +57,7 @@ x-kafka-users: &kafka-users >-
 services:
   # --- Platform -------------------------------------------------------------------------------
   postgres:
-    image: postgres:18.6-alpine
+    image: postgres:18.7-alpine
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
